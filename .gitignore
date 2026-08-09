@@ -1,0 +1,39 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.angular/
+.wrangler/
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Command Code — taste is committed on purpose (see AGENTS.md), sessions are not
+.commandcode/sessions/
+.commandcode/cache/
+.commandcode/settings.json
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Impeccable local config
+.impeccable/config.local.json
+
+# Reference screenshots
+*.png
+*.jpg
+*.jpeg
