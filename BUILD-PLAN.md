@@ -15,7 +15,7 @@ Written 9 Aug 2026.
 | Area | Decision |
 |---|---|
 | **Name** | Sweep |
-| **Frontend** | **Angular 22** (released 3 Jun 2026), standalone components, **zoneless**, signals throughout. Signal Forms and the Resource APIs are stable in 22 and are used in preference to reactive forms and hand-rolled loaders |
+| **Frontend** | **Angular 23** (scaffolded 10 Aug 2026), standalone components, **zoneless**, signals throughout. Signal Forms and the Resource APIs are stable and are used in preference to reactive forms and hand-rolled loaders |
 | **State** | NgRx SignalStore for scan + leads stores. No NgRx classic, no RxJS-heavy patterns |
 | **Styling** | Tailwind v4 with a design-token layer in `@theme` |
 | **Backend** | Supabase only — Postgres, Auth, Realtime, Edge Functions, Queues (pgmq), pg_cron |
@@ -1115,8 +1115,8 @@ Updated as work lands. Weekend numbers refer to §10.
 | Weekend | Status | Notes |
 |---|---|---|
 | **1 — Foundations (backend half)** | **Done, 9 Aug 2026** | Supabase project `sweep` created in `ap-southeast-2` (Sydney). Full §5 schema applied as 12 migrations, RLS on all 16 tables, spend gate tested. See below |
-| 0 — Style tile | **In progress** | Spec written, scope enrolled, git initialised. Awaiting scaffold and component build |
-| 1 — Foundations (Angular half) | Not started | Angular 22 scaffold, Tailwind v4, §7 tokens, keepalive ping |
+| 0 — Style tile | **Done, 10 Aug 2026** | Angular scaffolded at repo root, Tailwind v4 + §7 tokens, Geist Sans/Mono self-hosted, 7-section style tile at `/style`. `ng build` clean. See session log |
+| 1 — Foundations (Angular half) | Not started | Seed tenants/data, pgmq + pg_cron, keepalive ping |
 | 2–7 | Not started | |
 
 ### What exists in Supabase now

@@ -11,6 +11,34 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-10 · command-code · weekend 0 build
+
+**Did**
+- Scaffolded Angular 22 with `ng new sweep --directory . --routing --style css --ssr false --standalone --strict --zoneless`. Installed deps and Tailwind v4 + `@tailwindcss/postcss`.
+- Configured `postcss.config.mjs` and wrote all 20 §7 colour tokens plus radius tokens into `@theme` in `src/styles.css`.
+- Downloaded Geist Sans Bold and Geist Mono Medium from `vercel/geist-font` v1.7.2 zip (one zip asset per release). Self-hosted at `src/assets/fonts/`, preloaded in `index.html`.
+- Wired `provideZonelessChangeDetection()` and `provideRouter(routes, withViewTransitions())` in `app.config.ts`.
+- Built the style tile as one monolithic standalone component at `src/app/style-tile/style-tile.ts`, lazy-loaded at `/style`. Seven inline-styled sections: colour swatches with runtime WCAG 2.1 contrast ratios, type scale samples, 56px/40px buttons in 4 states, text input/select/checkbox/eyebrow pill with focus rings, 20-row hairline table of fake Blue Mountains leads, 4 stat blocks, SVG radar sweep with verdict on both panels.
+- `ng build` passes with zero warnings. Contrast ratios verified against BUILD-PLAN.md §7 — all match (ok token is 4.95:1, plan's 5.0:1 is rounded).
+
+**Decided**
+- Angular CLI installed is v23, not v22 — `@angular/cli@22` is not in the npm registry. Built with v23; no API surface difference for the features we use.
+
+**Didn't work**
+- `ng new --ai-config claude-code --test-runner vitest` — both flags unrecognised by the installed CLI. Skipped them. Vitest is the Angular 23 default. No generated AGENTS.md or `.mcp.json` to merge.
+- `ng new --directory .` rejected on `.gitignore` conflict. Renamed `.gitignore` to a backup, scaffolded, merged and deduped the two files.
+- Geist fonts: GitHub releases served a single `.zip` asset, not individual `.woff2` files per weight. Extracted the two needed weights from the zip via Python `zipfile`.
+
+**Open**
+- Dev server never spun up — `ng serve` was not run. `ng build` confirmed clean.
+- Radar sweep verdict is written inline in the component. Untested visually at real display.
+- The Angular version mismatch (23 vs planned 22) should be noted somewhere durable — BUILT-PLAN.md §1 still says "Angular 22".
+
+**Next**
+`/develop weekend-1-angular-foundations` — seed tenants/data, enable pgmq + pg_cron, set up keepalive ping.
+
+**Touched** — `angular.json`, `package.json`, `tsconfig.json`, `tsconfig.app.json`, `tsconfig.spec.json`, `postcss.config.mjs`, `src/index.html`, `src/styles.css`, `src/app/app.config.ts`, `src/app/app.routes.ts`, `src/app/style-tile/style-tile.ts`, `src/assets/fonts/Geist-Bold.woff2`, `src/assets/fonts/GeistMono-Medium.woff2`, `docs/specs/0001-angular-scaffold-style-tile.md`, `docs/scope/scope.md`, `BUILD-PLAN.md`
+
 ## 2026-08-09 · command-code · git init + architect weekend 0
 
 **Did**

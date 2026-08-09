@@ -45,7 +45,7 @@ unlogged session is invisible to the other agent.
 
 | Layer | Choice |
 |---|---|
-| Frontend | Angular 22, standalone, zoneless, signals throughout |
+| Frontend | Angular 23, standalone, zoneless, signals throughout |
 | Forms | **Signal Forms** (stable in 22). Not reactive forms |
 | Data loading | `resource()` / `httpResource()` for read-once; NgRx SignalStore for long-lived shared state |
 | A11y primitives | **Angular Aria** (stable in 22) for palette, comboboxes, sliders |

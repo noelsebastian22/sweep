@@ -1,39 +1,64 @@
-# Secrets
+
+!.env.example
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+.angular/
+.c9/
+.classpath
+.claude/settings.local.json
+.commandcode/cache/
+.commandcode/sessions/
+.commandcode/settings.json
+.DS_Store
 .env
 .env.*
-!.env.example
-
-# Dependencies
-node_modules/
-
-# Build output
-dist/
-.angular/
+.history/*
+.idea/
+.impeccable/config.local.json
+.project
+.sass-cache/
+.settings/
+.vscode/*
 .wrangler/
-
+*.jpeg
+*.jpg
+*.launch
+*.png
+*.sublime-workspace
+*.swp
+/.angular/cache
+/bazel-out
+/connect.lock
+/coverage
+/dist
+/libpeerconnection.log
+/node_modules
+/out-tsc
+/tmp
+/typings
+# Build output
+# Claude Code local settings
+# Command Code — taste is committed on purpose (see AGENTS.md), sessions are not
+# Compiled output
+# Dependencies
+# IDEs and editors
+# Impeccable local config
+# Miscellaneous
+# Node
+# OS / editor
+# Reference screenshots
+# Secrets
+# See https://docs.github.com/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
 # Supabase local
+# System files
+# Visual Studio Code
+dist/
+node_modules/
+npm-debug.log
 supabase/.branches/
 supabase/.temp/
-
-# OS / editor
-.DS_Store
-*.swp
-.idea/
-.vscode/*
-!.vscode/extensions.json
-
-# Command Code — taste is committed on purpose (see AGENTS.md), sessions are not
-.commandcode/sessions/
-.commandcode/cache/
-.commandcode/settings.json
-
-# Claude Code local settings
-.claude/settings.local.json
-
-# Impeccable local config
-.impeccable/config.local.json
-
-# Reference screenshots
-*.png
-*.jpg
-*.jpeg
+testem.log
+Thumbs.db
+yarn-error.log

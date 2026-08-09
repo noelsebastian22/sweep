@@ -1,7 +1,7 @@
 # 0001. Angular 22 scaffold and weekend 0 style tile
 
 **Date**: 2026-08-09
-**Status**: Proposed
+**Status**: In Progress
 
 ## Summary
 
@@ -165,13 +165,13 @@ The project has no recorded build approach. Defaulting to end to end (Tracer Bul
 **Negative / tradeoffs**:
 - `ng new --directory .` could overwrite files if the repo had existing Angular config. It does not, so this is a theoretical risk only.
 - The monolithic style tile component will be thrown away when real screens are built. That is intentional — it is a reference page, not production UI.
-- The generated AGENTS.md from `--ai-config` needs a manual merge step with the hand written one.
+- The `--ai-config claude-code` flag was not available on the CLI version used. No generated AGENTS.md or `.mcp.json` were created. The existing hand-written AGENTS.md remains the single source of truth.
 
 **Neutral**:
-- The scaffold adds roughly 15 files (`angular.json`, `tsconfig.json`, `tsconfig.app.json`, `tsconfig.spec.json`, `package.json`, `.aiconfig`, `.mcp.json`, and `src/` with the app shell).
-- Geist font files add roughly 200KB to the repo but are versioned alongside the code as intended.
+- The scaffold adds Angular config files (`angular.json`, `tsconfig.json`, `tsconfig.app.json`, `tsconfig.spec.json`, `package.json`, and `src/` with the app shell).
+- Geist font files add roughly 100KB to the repo but are versioned alongside the code as intended.
 
 ## Follow-up
 
-- [ ] Merge the Angular generated AGENTS.md with the hand written one. Keep the existing AGENTS.md as the primary source of truth; fold in any Angular specific conventions from the generated one that the current AGENTS.md deliberately omits.
+- [x] Merge the Angular generated AGENTS.md with the hand written one. The `--ai-config` flag was not supported by this CLI version, so no generated file was produced. The existing AGENTS.md is comprehensive and needs no merge.
 - [ ] After the style tile is signed off, the monolithic component should be replaced with extracted reusable components (table, buttons, inputs) as part of the Weekend 1 Angular foundation task.

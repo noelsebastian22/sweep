@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surface */
+  --color-sw-bg:        #FFFFFF;   /* page */
+  --color-sw-surface:   #FBFBFD;   /* panel / raised */
+  --color-sw-surface-2: #F4F4F8;   /* hover, table zebra, input rest */
+
+  /* Rules — cool, never neutral grey */
+  --color-sw-rule:      #ECEEF5;   /* row hairline, header underline */
+  --color-sw-rule-2:    #D2DCE7;   /* input + secondary-button border */
+
+  /* Ink — indigo-tinted, deliberately not black */
+  --color-sw-ink:       #2C224E;   /* headlines, table primary text */
+  --color-sw-ink-mid:   #626879;   /* body copy, subheads */
+  --color-sw-ink-lo:    #7E8497;   /* labels, meta */
+
+  /* Accent — the only brand colour */
+  --color-sw-violet:      #6F58E3;
+  --color-sw-violet-hi:   #5A43D4;  /* hover / pressed */
+  --color-sw-violet-soft: #EFECFC;  /* tinted fills, selected row */
+
+  /* Score heat — one hue, violet, light→deep */
+  --color-sw-heat-0: #C9CBD6;   /* cold — good site, weak lead */
+  --color-sw-heat-1: #B3AEE8;
+  --color-sw-heat-2: #9384EC;
+  --color-sw-heat-3: #7660E5;
+  --color-sw-heat-4: #5334C9;   /* hot — strong lead */
+
+  /* Functional — used only for these meanings, never decoration */
+  --color-sw-warn:    #A06A1C;   /* spend, quota, parked scans */
+  --color-sw-warn-bg: #FDF6E9;
+  --color-sw-fail:    #C0392B;   /* failed query, error state */
+  --color-sw-ok:      #1E7F5C;   /* completed scan, contacted lead */
+
+  --radius-sw-sm: 6px;
+  --radius-sw:    10px;
+  --radius-sw-lg: 14px;
+  --radius-sw-pill: 999px;
+}
+
+/* Geist Sans — self-hosted */
+@font-face {
+  font-family: 'Geist Sans';
+  src: url('/assets/fonts/Geist-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Geist Mono — self-hosted */
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('/assets/fonts/GeistMono-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Global defaults */
+html {
+  font-family: 'Geist Sans', system-ui, sans-serif;
+  color: var(--color-sw-ink-mid);
+  background: var(--color-sw-bg);
+}
+
+body {
+  margin: 0;
+}
+
+/* Every number is mono with tabular-nums */
+[data-mono] {
+  font-family: 'Geist Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
