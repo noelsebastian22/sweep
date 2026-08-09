@@ -1115,7 +1115,7 @@ Updated as work lands. Weekend numbers refer to §10.
 | Weekend | Status | Notes |
 |---|---|---|
 | **1 — Foundations (backend half)** | **Done, 9 Aug 2026** | Supabase project `sweep` created in `ap-southeast-2` (Sydney). Full §5 schema applied as 12 migrations, RLS on all 16 tables, spend gate tested. See below |
-| 0 — Style tile | Not started | |
+| 0 — Style tile | **In progress** | Spec written, scope enrolled, git initialised. Awaiting scaffold and component build |
 | 1 — Foundations (Angular half) | Not started | Angular 22 scaffold, Tailwind v4, §7 tokens, keepalive ping |
 | 2–7 | Not started | |
 

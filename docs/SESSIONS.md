@@ -11,6 +11,30 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-09 · command-code · git init + architect weekend 0
+
+**Did**
+- Initialised git, wrote `.gitignore` exclusions for local configs and screenshots, committed all 387 project files as `528aec2`.
+- Ran `/architect` for Weekend 0: scaffold and style tile. Wrote spec `docs/specs/0001-angular-scaffold-style-tile.md` — `Proposed`.
+- Enrolled the style tile on the scope at `docs/scope/scope.md`, in-progress.
+
+**Decided**
+- Scaffold with `ng new sweep --directory . --routing --style css --ssr false --standalone --strict --zoneless --ai-config claude-code --test-runner vitest`. The `--ai-config claude-code` flag generates Angular MCP config and an AGENTS.md to merge with the hand-written one.
+- Tailwind v4 via `@tailwindcss/postcss` (PostCSS), not the Vite plugin. More universal and documented for Angular.
+- Geist Sans + Mono self-hosted from Vercel's `vercel/geist-font` releases, not `@fontsource`. Direct `@font-face` with preload on the two hero weights.
+- Contrast ratio computed at runtime with inline WCAG 2.1 formula, no npm dependency.
+- Style tile is one monolithic component at `/style`, not seven sub-components. Throwaway reference page — reusable components extracted in Weekend 1.
+- No Supabase, MapLibre, Motion One, or NgRx installed yet. Scaffold only.
+
+**Open**
+- The Angular-generated AGENTS.md from `--ai-config` will need merging with the hand-written one. Follow-up in spec.
+- Radar sweep readability on light is unproven. The style tile must render both variants and give an honest verdict.
+
+**Next**
+`/develop weekend-0-style-tile` — scaffold Angular 22, Tailwind v4, fonts, then build the style tile component per spec 0001.
+
+**Touched** — `.gitignore`, `docs/specs/0001-angular-scaffold-style-tile.md`, `docs/scope/scope.md`
+
 ## 2026-08-09 · claude-code · design pivot + supabase foundations
 
 **Did**
