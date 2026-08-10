@@ -11,6 +11,32 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-10 · command-code · weekend 1 architect
+
+**Did**
+- Ran `/architect` for Weekend 1: seed data, queue plumbing, keepalive, Angular app shell. Wrote spec `docs/specs/0002-weekend-1-angular-foundations.md` — `Proposed`.
+- Cross-checked the spec: found five gaps (no profiles rows, health function missing verify_jwt, tick cron no-op had no SQL, missing pg_net extension). All fixed before confirmation.
+- Enrolled Weekend 1 on the scope at `docs/scope/scope.md`, in-progress with 3 milestone tasks.
+- Discovered `harvest.mjs` was not tracked in git. Now staged.
+
+**Decided**
+- Keepalive: **UptimeRobot free monitor** pinging `/health` every 5 minutes. Chosen over GitHub Actions (dormant-repo timeout kills it) and pg_cron self-ping (not reliably counted as activity by Supabase). The health function checks Postgres connectivity with `select 1`, not just a bare 200.
+- Auth: **email/password only** for now. Google OAuth can be added later as a Supabase config change with no code rewrite. Demo user at `demo@sweep.local`, password as a Supabase secret.
+- Seed: **migration (DDL) + edge function (data)**. Migration 13 enables pgmq, pg_cron, pg_net, creates queues, schedules tick cron as `select 1`. A seed edge function inserts tenants, trades, suburbs (lat/lng filled by /develop), api_budgets, plus creates auth users and profiles for Noel and demo.
+- State: **NgRx SignalStore** for auth (session, user, tenant). Supabase client provided in `app.config.ts`. Auth guard reads from the store.
+- App shell: **login page at `/login`**, shared layout shell with header and content projection, placeholder dashboard at `/` with fixture stat cards.
+- Queue messages: **minimal** — sweep_search carries scan_id, query_id, trade name/type, suburb name/lat/lng. sweep_psi carries scan_id, business_id, website_url. Workers look up config from the scan row.
+
+**Open**
+- `harvest.mjs` was never committed (not in any git history). The spec references it for the TRADES and SUBURBS arrays. Must be staged in this commit.
+- Suburb lat/lng coordinates are left for /develop to fill during the build.
+- Angular version mismatch (23 vs 22 in BUILD-PLAN.md §1) still not fixed. Follow-up in spec 0002.
+
+**Next**
+`/develop weekend-1-angular-foundations` — 15 build tasks across backend (migration, health, seed, keepalive) and frontend (Supabase client, AuthStore, login, guard, layout, dashboard).
+
+**Touched** — `docs/specs/0002-weekend-1-angular-foundations.md`, `docs/scope/scope.md`, `harvest.mjs`
+
 ## 2026-08-10 · command-code · weekend 0 build
 
 **Did**
