@@ -1,6 +1,6 @@
 # Sweep — Build Plan
 
-A lead-prospecting tool for local trade businesses. Productises `prospecting/harvest.mjs`
+A lead-prospecting tool for local trade businesses. Productises `harvest.mjs`
 into a real application: define a scan, watch it run, triage the results, act on them.
 
 Two jobs at once — a tool Noel actually uses weekly, and the portfolio piece that proves
@@ -15,7 +15,7 @@ Written 9 Aug 2026.
 | Area | Decision |
 |---|---|
 | **Name** | Sweep |
-| **Frontend** | **Angular 23** (scaffolded 10 Aug 2026), standalone components, **zoneless**, signals throughout. Signal Forms and the Resource APIs are stable and are used in preference to reactive forms and hand-rolled loaders |
+| **Frontend** | **Angular 22** (scaffolded 10 Aug 2026 at v20, upgraded to v22 on 11 Aug 2026), standalone components, **zoneless**, signals throughout. Signal Forms and the Resource APIs are stable and are used in preference to reactive forms and hand-rolled loaders |
 | **State** | NgRx SignalStore for scan + leads stores. No NgRx classic, no RxJS-heavy patterns |
 | **Styling** | Tailwind v4 with a design-token layer in `@theme` |
 | **Backend** | Supabase only — Postgres, Auth, Realtime, Edge Functions, Queues (pgmq), pg_cron |

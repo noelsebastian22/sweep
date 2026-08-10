@@ -1,4 +1,4 @@
-import { Component, signal, inject } from '@angular/core';
+import { Component, signal, inject, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { AuthStore } from '../../stores/auth.store';
@@ -7,6 +7,7 @@ import { AuthStore } from '../../stores/auth.store';
   selector: 'app-login',
   standalone: true,
   imports: [FormsModule],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div style="display:flex;align-items:center;justify-content:center;min-height:100dvh;background:var(--color-sw-bg);padding:24px;">
       <div style="width:100%;max-width:400px;display:flex;flex-direction:column;gap:24px;">

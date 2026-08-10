@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { RouterModule, RouterOutlet } from '@angular/router';
 import { AuthStore } from '../stores/auth.store';
 
@@ -6,6 +6,7 @@ import { AuthStore } from '../stores/auth.store';
   selector: 'app-layout',
   standalone: true,
   imports: [RouterModule, RouterOutlet],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div style="min-height:100dvh;display:flex;flex-direction:column;">
       <header style="display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 24px;border-bottom:1px solid var(--color-sw-rule);background:var(--color-sw-surface);flex-shrink:0;">

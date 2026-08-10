@@ -1,9 +1,10 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { AuthStore } from '../../stores/auth.store';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div style="max-width:960px;">
       <h1 style="font-family:'Geist Sans',sans-serif;font-size:20px;font-weight:600;line-height:1.3;color:var(--color-sw-ink);margin:0 0 4px;">Welcome{{ authStore.email() ? ', ' + authStore.email() : '' }}</h1>

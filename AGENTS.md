@@ -7,7 +7,7 @@ instructions across both files.
 ## What this is
 
 Sweep is a lead-prospecting tool for local trade businesses in the Blue Mountains, NSW. It
-productises a standalone script (`prospecting/harvest.mjs`) into an application: define a
+productises a standalone script (`harvest.mjs`, repo root) into an application: define a
 scan, watch it run, triage the results, act on them.
 
 It has two jobs. It is a tool Noel uses weekly, and it is the portfolio piece that proves
@@ -45,7 +45,7 @@ unlogged session is invisible to the other agent.
 
 | Layer | Choice |
 |---|---|
-| Frontend | Angular 23, standalone, zoneless, signals throughout |
+| Frontend | Angular 22, standalone, zoneless, signals throughout |
 | Forms | **Signal Forms** (stable in 22). Not reactive forms |
 | Data loading | `resource()` / `httpResource()` for read-once; NgRx SignalStore for long-lived shared state |
 | A11y primitives | **Angular Aria** (stable in 22) for palette, comboboxes, sliders |
@@ -63,7 +63,7 @@ service.
 Project `sweep`, ref `ifwyufrepqkzsicjinfi`, region `ap-southeast-2`, Postgres 17.
 Schema is fully applied — 16 tables, RLS on all of them, plus the `lead_rows` view.
 
-- Schema lives in `supabase/migrations/`, twelve files, matching the remote ledger exactly
+- Schema lives in `supabase/migrations/`, 13 files, matching the remote ledger exactly
 - **Schema changes are migrations. Never edit through the dashboard.** Both agents can
   apply migrations through the Supabase MCP
 - **Run `get_advisors` (security *and* performance) after any DDL.** It catches missing
@@ -145,7 +145,7 @@ The service role key and the Google API keys are edge-function secrets, set with
 | `BUILD-PLAN.md` | The reasoning behind every decision. §14 is current build status |
 | `docs/SESSIONS.md` | Shared session log — see the session protocol above |
 | `docs/prompts/` | Reusable task prompts, one per weekend in §10 |
-| `supabase/migrations/` | Twelve migrations, matching the remote ledger exactly |
+| `supabase/migrations/` | 13 migrations, matching the remote ledger exactly |
 | `.agents/skills/` | Shared skills. Symlinked into `.claude/skills/` |
 | `.commandcode/taste/` | Command Code's learned conventions. **Committed on purpose** |
 

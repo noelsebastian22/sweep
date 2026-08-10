@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy } from '@angular/core';
 
 /* ---- WCAG 2.1 contrast ratio ---- */
 function hexToRgb(hex: string): [number, number, number] {
@@ -371,6 +371,7 @@ function statusLabel(s: string): string {
       </main>
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [`
     .tile-page {
       max-width: 1280px;
