@@ -1,11 +1,11 @@
 import { Component, inject } from '@angular/core';
-import { RouterModule } from '@angular/router';
+import { RouterModule, RouterOutlet } from '@angular/router';
 import { AuthStore } from '../stores/auth.store';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [RouterModule],
+  imports: [RouterModule, RouterOutlet],
   template: `
     <div style="min-height:100dvh;display:flex;flex-direction:column;">
       <header style="display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 24px;border-bottom:1px solid var(--color-sw-rule);background:var(--color-sw-surface);flex-shrink:0;">
@@ -19,7 +19,7 @@ import { AuthStore } from '../stores/auth.store';
         </div>
       </header>
       <main style="flex:1;padding:32px;">
-        <ng-content />
+        <router-outlet />
       </main>
     </div>
   `,
