@@ -96,8 +96,11 @@ Deno.serve(async (req: Request) => {
 
   const noelEmail = 'noel@nooel-sebastian.com';
   const demoEmail = 'demo@sweep.local';
-  // TODO: move to Supabase secrets once CLI is logged in
-  const demoPassword = 'demo1234!';
+  const noelPassword = Deno.env.get('NOEL_PASSWORD');
+  const demoPassword = Deno.env.get('DEMO_PASSWORD');
+  if (!noelPassword || !demoPassword) {
+    throw new Error('Missing NOEL_PASSWORD or DEMO_PASSWORD secret — set both with `supabase secrets set`');
+  }
 
   // Check existing users (idempotent)
   const { data: existingUsers } = await adminClient.auth.admin.listUsers();
@@ -107,7 +110,7 @@ Deno.serve(async (req: Request) => {
     const { data: created } = await adminClient.auth.admin.createUser({
       email: noelEmail,
       email_confirm: true,
-      password: Deno.env.get('NOEL_PASSWORD') || demoPassword,
+      password: noelPassword,
     });
     if (created.user) noelUser = created.user;
   }

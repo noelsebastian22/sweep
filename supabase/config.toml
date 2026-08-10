@@ -1,0 +1,15 @@
+project_id = "ifwyufrepqkzsicjinfi"
+
+# Edge function verify_jwt settings, tracked here so redeploys don't silently
+# drop or add auth requirements via a CLI flag no one remembers.
+#
+# health: public — the UptimeRobot keepalive monitor pings this with no auth.
+# It only exposes a Postgres liveness check, no data.
+[functions.health]
+verify_jwt = false
+
+# seed: privileged — invoked manually with the service role key as a bearer
+# token (checked again inside the function body). Requires a valid JWT at the
+# gateway on top of that.
+[functions.seed]
+verify_jwt = true

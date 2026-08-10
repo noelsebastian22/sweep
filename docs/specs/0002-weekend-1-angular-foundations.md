@@ -1,7 +1,7 @@
 # 0002. Weekend 1: Angular foundations (seed data, queues, keepalive, app shell)
 
 **Date**: 2026-08-10
-**Status**: Proposed
+**Status**: Built except AC-4 (keepalive) — 11 Aug 2026, see docs/SESSIONS.md
 
 ## Summary
 
@@ -235,7 +235,7 @@ The build follows a Tracer Bullet approach (the project default from AGENTS.md, 
 
 - [ ] Suburb lat/lng: the seed function hardcodes approximate coordinates for 18 Blue Mountains suburbs. Verify them against a real map before Weekend 6 (the map view)
 - [ ] UptimeRobot monitor URL: document the monitor's public status page URL in BUILD-PLAN.md or the README so it is findable for portfolio demos
-- [ ] Angular version: BUILD-PLAN.md §1 still says "Angular 22". The scaffold landed as v23. Update §1 to match reality
+- [x] Angular version: resolved 11 Aug 2026 — upgraded the actual install from v20 to v22 rather than editing the doc to match a lower version. BUILD-PLAN.md §1 and AGENTS.md now both say v22, matching `package.json`
 
 ## References
 
