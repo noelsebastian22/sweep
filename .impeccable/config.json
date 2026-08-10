@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "geist sans",
+        "createdAt": "2026-08-10T23:16:43.756Z",
+        "reason": "User confirmed Geist Sans is intentional — locked system-wide typeface decision in BUILD-PLAN.md §7"
+      }
+    ]
+  }
+}
