@@ -7,3 +7,6 @@
 - Prefers self-hosted fonts over CDN loading, with explicit preloading of only the weights actually used. Confidence: 0.8
 - Favors minimal dependency footprint — prefers inline utility implementations (e.g., WCAG contrast formula in ~10 lines) over pulling npm packages for small functions. Confidence: 0.85
 - Responds concisely with short directives ("lets go with this plan") rather than restating context. Confidence: 0.85
+- Prefers explanations in simple, plain language over technical jargon — asks explicitly to be told things in "simple language so that I can understand." Confidence: 0.75
+- Prefers all clarifying questions batched upfront at the start of a task; after answers are given, wants the agent to proceed autonomously without further interruptions or mid-task questions. Confidence: 0.9
+- Expects the agent to infer best-fit defaults from previous answers and context rather than re-asking about preferences that were already established in prior interactions. Confidence: 0.85

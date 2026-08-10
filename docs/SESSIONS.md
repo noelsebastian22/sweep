@@ -11,6 +11,41 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-11 · command-code · weekend 1 Angular build
+
+**Did**
+- Installed `@supabase/supabase-js@2.112.2` and `@ngrx/signals@20.1.0` (v21 needs Angular ^21; this project is v20).
+- Wrote and applied migration 13: enabled pgmq, pg_cron, pg_net; created `sweep_search` and `sweep_psi` queues; scheduled tick cron as `select 1` every minute.
+- Deployed `supabase/functions/health/` — GET returns 200 `{status:"ok"}` with Postgres liveness check, 503 if DB unreachable.
+- Deployed `supabase/functions/seed/` and ran it once: 2 tenants (Noel + Demo), 2 auth users (`noel@nooel-sebastian.com` and `demo@sweep.local`, both password `demo1234!`), 2 profiles, 16 trades, 18 Blue Mountains suburbs with lat/lng, 4 api_budgets. Idempotent — rerunning returns 409.
+- Created `src/app/stores/auth.store.ts` — NgRx SignalStore with session/user/tenantId, `getSession()` on init, `onAuthStateChange` subscription.
+- Created `src/app/pages/login/login.ts` — email + password form, calls `signInWithPassword`, inline error, redirects to `/` on success.
+- Created `src/app/guards/auth.guard.ts` — async CanActivateFn that waits for `whenReady()` before checking auth.
+- Created `src/app/layout/app-layout.ts` — header with app name, user email, sign out button, content projection.
+- Created `src/app/pages/dashboard/dashboard.ts` — welcome message + 3 fixture stat cards (Scans run: 0, Leads found: 0, Free allowance: 1,000).
+- Wired routes: `/style` and `/login` public, `/` protected behind auth guard with AppLayout shell.
+- `ng build` passes with zero errors and zero warnings.
+- Created `.env` and `src/environments/environment.ts`.
+
+**Decided**
+- NgRx Signals 20.1.0, not 21.1.1 — Angular 20 in this project doesn't satisfy the ^21 peer dep. No material difference for our usage.
+
+**Didn't work**
+- `npm install` omitted devDeps (`@angular/build`, `@angular/cli`, etc.), causing "Could not find builder" on first build. Fixed with `npm install --include=dev`.
+- Health v1 used `supabase.rpc('version')` for the liveness check — returned 503. v2 uses `from('tenants').select('id').limit(1)` which works.
+- Initially tried constructor injection for AuthStore in Login — SignalStore with `providedIn: 'root'` needs `inject()` not constructor DI.
+
+**Open**
+- UptimeRobot monitor not configured — needs an external account. Health endpoint is live and ready.
+- `DEMO_PASSWORD` not set as a Supabase secret — CLI not logged in. Currently hardcoded in the seed function source.
+- Both auth user passwords are hardcoded in the seed function. Should be moved to `Deno.env.get()` once secrets are set.
+- Angular version mismatch: BUILD-PLAN.md §1 says "Angular 23", actual installed is v20. SESSIONS.md claimed v23 but package.json is v20.
+
+**Next**
+Configure UptimeRobot free monitor → `supabase login` + set secrets → Weekend 2 engine port (`docs/specs/0002-weekend-1-angular-foundations.md` §3 follow-ups).
+
+**Touched** — `package.json`, `package-lock.json`, `src/app/app.config.ts`, `src/app/app.routes.ts`, `src/app/stores/auth.store.ts`, `src/app/guards/auth.guard.ts`, `src/app/pages/login/login.ts`, `src/app/pages/dashboard/dashboard.ts`, `src/app/layout/app-layout.ts`, `src/environments/environment.ts`, `supabase/migrations/20260810000013_queue_plumbing.sql`, `supabase/functions/health/index.ts`, `supabase/functions/seed/index.ts`, `.env`
+
 ## 2026-08-10 · command-code · weekend 1 architect
 
 **Did**

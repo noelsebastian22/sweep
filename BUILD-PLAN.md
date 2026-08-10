@@ -1116,7 +1116,7 @@ Updated as work lands. Weekend numbers refer to §10.
 |---|---|---|
 | **1 — Foundations (backend half)** | **Done, 9 Aug 2026** | Supabase project `sweep` created in `ap-southeast-2` (Sydney). Full §5 schema applied as 12 migrations, RLS on all 16 tables, spend gate tested. See below |
 | 0 — Style tile | **Done, 10 Aug 2026** | Angular scaffolded at repo root, Tailwind v4 + §7 tokens, Geist Sans/Mono self-hosted, 7-section style tile at `/style`. `ng build` clean. See session log |
-| 1 — Foundations (Angular half) | **Designed, 10 Aug 2026** | Seed tenants/data, pgmq + pg_cron + pg_net, keepalive ping, auth, app shell. Spec 0002 written, not yet built. See session log |
+| 1 — Foundations (Angular half) | **Done, 11 Aug 2026** | Migration 13 applied (pgmq, pg_cron, pg_net, queues, tick cron). Health + seed edge functions deployed and run. AuthStore, login, auth guard, layout shell, dashboard built. `ng build` clean. See session log |
 | 2–7 | Not started | |
 
 ### What exists in Supabase now
