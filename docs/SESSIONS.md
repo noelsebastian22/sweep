@@ -11,6 +11,40 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-11 · claude-code · weekend 2 spec + hygiene
+
+**Did**
+- Fixed `AppLayout` (`src/app/layout/app-layout.ts`): `<ng-content />` → `<router-outlet />` — it was wired as a router parent with `children` but rendering via content projection, so the dashboard likely never showed. Verified end to end in browser (login → dashboard renders inside the shell).
+- Upgraded Angular v20 → v21 → v22 (`ng update` twice), bumped Node to 24.19.0 LTS (pinned in `.nvmrc`, Angular 22's CLI requires it), `@ngrx/signals` pinned to `22.0.0-rc.0` (no stable release targets Angular 22 yet).
+- Backend hygiene: `supabase login` + linked the project; set secrets `GOOGLE_PLACES_API_KEY`, `GOOGLE_PSI_API_KEY`, `NOEL_PASSWORD`, `DEMO_PASSWORD` (none ever written to a file); removed the hardcoded password fallback in `supabase/functions/seed/index.ts`, redeployed; added `supabase/config.toml` tracking `verify_jwt` per function.
+- Ran `get_advisors` (overdue since migration 13, never run last session): found migration 13 left `pg_net` installed in the `public` schema. Fixed with migration 14 (`20260810231309_14_move_pg_net_out_of_public.sql`).
+- Found and fixed migration filename drift: local file for migration 13 was named `20260810000013_queue_plumbing.sql` but the remote ledger recorded it as `20260810221724`; renamed both 13 and 14 so `supabase migration list` matches exactly, local to remote.
+- Corrected stale docs: AGENTS.md/BUILD-PLAN.md Angular version (said 23, actual is v22), migration count (said 12, then 13, now 14), `harvest.mjs` path (no `prospecting/` dir exists), `docs/scope/scope.md` and specs 0001/0002 status headers reconciled to what actually shipped.
+- Wrote and confirmed `docs/specs/0003-weekend-2-engine-spend-gate.md` via `/architect` — full staged design conversation, then a same-model cross check that found 10 real gaps: queue not scoped to the active scan, `awaiting_approval` scans invisible to `tick`'s active-scan query (AC-7's resume could never fire), no `region_id` source for `scan-create`, no per-scan business linkage (`first_seen_scan_id` only holds for a business's *first ever* scan — would silently break on the second real scan, the project's actual steady state), missing `refund_api_calls()` on the Places 400-retry path, a redelivery race on the PSI unique index, `pg_net`'s default 5s timeout vs `tick`'s 120s budget, no overlapping-tick guard, unspecified `businesses` upsert conflict columns, no `website_kind` classification carried over. All 10 fixed directly in the spec's ACs, data model, and build plan — not left as follow-ups.
+- Enrolled Weekend 2 on `docs/scope/scope.md`, in-progress, 5-milestone rollup. Updated `BUILD-PLAN.md` §14.
+
+**Decided**
+- `tick` is one deployed edge function with `search.ts`/`psi.ts`/`advance.ts` as internal modules, not four separately deployed functions — matches `BUILD-PLAN.md` §6's own invocation-budget arithmetic (one function, 43,200/month) and gives all three stages one shared 120s time budget instead of three separate ones.
+- `scan-create` never enqueues `sweep_search` itself; `tick` enqueues it the first time it picks a `queued` scan as active. This is what actually keeps one scan's work in flight system-wide — the first draft of the spec didn't enforce this anywhere, the cross check caught it.
+- The service role key for the cron→edge-function call goes through Supabase Vault (`vault.create_secret`, run manually, never committed) rather than a Postgres setting inside a migration file — keeps the raw key out of git per AGENTS.md hard rule 3.
+- `@ngrx/signals` stays on the `22.0.0-rc.0` prerelease until a stable 22.x ships; recorded here so a future `npm update` doesn't silently need re-deciding.
+
+**Didn't work**
+- First Angular upgrade attempt: bumped `@ngrx/signals` to 21.1.1 for the v21 hop but forgot to bump it again for the v22 hop — `npm i` broke for Noel with a peer-dep conflict. Fixed by pinning to the `22.0.0-rc.0` prerelease.
+- `ng update @angular/cli@22` failed outright on Node 22.17.0 ("requires v22.22.3+"). Had to install Node 24.19.0 via `nvm` first.
+- Tried `alter extension pg_net set schema extensions` to fix the public-schema finding — pg_net doesn't support `set schema` on an existing install. Had to `drop extension` + `create extension ... with schema extensions` instead.
+
+**Open**
+- Weekend 2 is spec'd and confirmed but **not built**. `/develop weekend-2-engine-spend-gate` is next.
+- UptimeRobot keepalive still not configured (carried over from last session).
+- Leaked password protection is disabled on Supabase Auth — flagged by `get_advisors`, no MCP tool exposes the setting to fix it; needs the dashboard directly.
+- The one-time `select vault.create_secret('service_role_key', ...)` step has not been run — it's build-plan step 2 for `/develop`, the migration that reads it back doesn't exist yet either.
+
+**Next**
+`/clear` then `/develop weekend-2-engine-spend-gate` — build the schema additions (`last_scan_id`, the `psi_completed` trigger, the redelivery-safe unique index), the `tick` cron wiring, `scan-create`, and the `tick` engine itself (`search.ts`/`advance.ts`/`psi.ts`/`index.ts`), per the spec's 13-step build plan.
+
+**Touched** — `src/app/layout/app-layout.ts`, `package.json`, `package-lock.json`, `.nvmrc`, `AGENTS.md`, `BUILD-PLAN.md`, `docs/scope/scope.md`, `docs/specs/0001-angular-scaffold-style-tile.md`, `docs/specs/0002-weekend-1-angular-foundations.md`, `docs/specs/0003-weekend-2-engine-spend-gate.md`, `supabase/config.toml`, `supabase/functions/seed/index.ts`, `supabase/migrations/20260810221724_13_queue_plumbing.sql`, `supabase/migrations/20260810231309_14_move_pg_net_out_of_public.sql`, `.impeccable/config.json`
+
 ## 2026-08-11 · command-code · weekend 1 Angular build
 
 **Did**
