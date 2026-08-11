@@ -1,21 +1,11 @@
 # 0003. Weekend 2: engine and spend gate
 
 **Date**: 2026-08-11
-**Status**: Proposed
+**Status**: Accepted
 
 ## Summary
 
 This weekend ports the standalone `harvest.mjs` script into the app itself. Three pieces of logic (searching Google Places, checking site speed with PageSpeed, and deciding when a scan is done) move into one Supabase edge function that a scheduled job wakes up every minute. Every call to a paid API is checked against a budget first, so the app can never spend money by accident. There is still no screen for any of this; a scan is started with a raw HTTP request and its progress is checked directly in the database. The screen comes in later weekends.
-
-## Context
-
-`harvest.mjs` at the repo root already does the real work: search Google Places for sixteen trades across eighteen Blue Mountains suburbs, filter out landmarks and cafés, check the site speed of anything with a website, score the result, and write the best fifty to Notion. It runs once, by hand, from a terminal.
-
-Weekend 1 built the plumbing this port needs: the full schema (`scans`, `scan_queries`, `businesses`, `psi_results`, `leads`), the `reserve_api_calls()` spend gate function tested against `free`/`paid`/`denied`/`no_budget`, the `pgmq` queues `sweep_search` and `sweep_psi`, and a `pg_cron` job named `tick` that currently runs a no-op `select 1` every minute.
-
-The forces that shape this weekend are cost and time, not features. Google Places Text Search is billed at Enterprise tier, $35 per 1,000 calls, with 1,000 free calls a month; a full scan is 288 calls. `AGENTS.md`'s hard rule is absolute: no code path calls a metered API without a grant returning `free` or `paid` first, and a `denied` result parks the work rather than failing it. Supabase's free plan edge functions also cap wall clock time at 150 seconds, not the 400 seconds the paid plan allows, and the invocation budget is 500,000 calls a month, cheap to burn through with a naive per-function cron. Both bound the shape of the engine as much as the business logic does.
-
-There is no UI this weekend. The acceptance test is a scan run from a terminal, verified by reading rows out of Postgres, not by clicking anything.
 
 ## Requirements
 
@@ -39,42 +29,11 @@ There is no UI this weekend. The acceptance test is a scan run from a terminal, 
 - **AC-12**: Two `tick` invocations never run concurrently. An advisory lock taken at the start of `tick/index.ts` means a slow invocation still running when the next minute's cron fires causes the new invocation to exit immediately rather than double-processing the same active scan.
 - **AC-13**: Rediscovering a business on a later scan always refreshes its mutable fields (`rating`, `rating_count`, `website_url`, `website_kind`, `phone`, `primary_type`, `types`, `business_status`, `last_seen_at`, `last_scan_id`) and always preserves the original `first_seen_scan_id`.
 
-## Options considered
-
-### Option 1: One `tick` function, three internal modules
-
-`supabase/functions/tick/` is the only function the cron job invokes. `index.ts` is a thin entry point; `search.ts`, `psi.ts`, and `advance.ts` are plain TypeScript modules it imports and calls in sequence, each doing one stage of the work inside the same request and the same 120 second budget.
-
-**Pros**:
-- Matches `BUILD-PLAN.md` §6's own invocation math exactly: one edge function invocation per cron minute, 43,200 a month, about 9% of the free allowance.
-- One shared time budget per tick; a scan that's mostly done with search can spend the leftover seconds on PSI in the same wake-up rather than waiting for a whole separate function's next turn.
-- One deployment, one log stream to read while debugging a live run.
-
-**Cons**:
-- All logic runs in one process; a bug in `psi.ts` can only be tested by invoking the whole `tick` function, not `psi.ts` in isolation over HTTP.
-
-### Option 2: Four separately deployed functions
-
-`scan-create`, `worker-search`, `worker-psi`, and `scan-advance` each deployed independently. `tick` becomes a thin dispatcher making internal `fetch()` calls to the other three.
-
-**Pros**:
-- Each function is independently invokable and testable over HTTP without standing up the whole pipeline.
-- Matches the descriptive table in `BUILD-PLAN.md` §6 literally, function name for function name.
-
-**Cons**:
-- Each `fetch()` call from `tick` to another function counts as its own edge function invocation, working against the invocation budget the naive-cron section of the same document explicitly warns about.
-- Each function gets its own 120 second budget rather than one shared one; a tick that finishes search early can't spend the remainder on PSI, it has to wait for the next minute.
-- Four deployments and four log streams to reason about instead of one.
-
 ## Decision
 
-**Chosen option**: Option 1: One `tick` function, three internal modules.
+**Chosen option**: One `tick` function, three internal modules. See `rationale.md` for the options considered and why.
 
 `scan-create` stays a separately deployed, HTTP-triggered function (the app will call it directly from Weekend 3 onward). `tick` is the only cron-triggered function, deployed at `supabase/functions/tick/`, importing `search.ts`, `psi.ts`, and `advance.ts` as internal modules rather than as separately deployed functions.
-
-## Rationale
-
-`BUILD-PLAN.md` §6 states the invocation math in absolute terms ("One function, 43,200 invocations a month") right after describing the four logical stages, which only reconciles if the four collapse into a single deployed function at runtime. Reading the table literally as four deployed functions contradicts the document's own arithmetic two paragraphs later. A shared time budget is also the better fit for the actual workload: PSI checks run roughly 10 seconds each, so a tick with light search results and idle PSI time this minute should be able to spend it, not sit on it until the next wake-up. The cost, in return, is that `search.ts` and `psi.ts` can only be exercised by invoking the whole `tick` function during development — an acceptable tradeoff for a solo weekly tool where nobody else needs to invoke a worker stage independently.
 
 ## Feature design
 
@@ -107,7 +66,7 @@ No new tables. This weekend reuses `scans`, `scan_queries`, `businesses`, `psi_r
 | `search.ts` | `businesses.last_scan_id` on upsert | The message's own `scan_id` — always overwritten, unlike `first_seen_scan_id` which is only ever set on first insert |
 | `advance.ts` | the PSI cutoff (`ceiling`) | `ceiling(p) = userRatingCount × (rating / 5)`, ported verbatim from `harvest.mjs`, computed over businesses where `last_scan_id = this scan` (not `first_seen_scan_id`, which only holds for a business's first ever scan) |
 | `advance.ts` | which businesses get a `leads` row (AC-6) | Every business where `last_scan_id = this scan` — not filtered by `top_n` or by whether it received a PSI check |
-| `advance.ts` | final `scans.status` | The confirmed status logic: `completed` when `completed_queries + failed_queries = total_queries` and `failed_queries = 0` and `psi_completed = psi_total`; `partial` when finished but `failed_queries > 0` or a denial occurred; `failed` when `businesses_found = 0` |
+| `advance.ts` | final `scans.status` | The confirmed status logic: `completed` when `completed_queries + failed_queries = total_queries` and `failed_queries = 0` and `psi_completed = psi_total`; `partial` when finished but `failed_queries > 0` or a denial occurred; `failed` when `businesses_found = 0` — **see `rationale.md`'s open question**, `businesses_found` counts only new discoveries, not total businesses touched |
 
 **Queue message envelopes** (both queues carry `tenant_id` directly, denormalised from the scan row, so no worker needs an extra join per message just to call `reserve_api_calls()`):
 
@@ -130,32 +89,32 @@ No new tables. This weekend reuses `scans`, `scan_queries`, `businesses`, `psi_r
 **Configuration required**:
 - `GOOGLE_PLACES_API_KEY`: already set as a Supabase secret.
 - `GOOGLE_PSI_API_KEY`: already set as a Supabase secret.
-- A one time `select vault.create_secret(<the actual service role key>, 'service_role_key')`, run directly against the database (not via a migration file, and not committed anywhere) before the cron job can authenticate its call to `tick`. The migration that replaces the current `select 1` placeholder reads the key back with `(select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key')` — the raw value itself never appears in git history, satisfying AGENTS.md hard rule 3.
+- A one time `select vault.create_secret(<the actual service role key>, 'service_role_key')`, run directly against the database (not via a migration file, and not committed anywhere) before the cron job can authenticate its call to `tick`. The migration that replaces the current `select 1` placeholder reads the key back with `(select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key')` — the raw value itself never appears in git history, satisfying AGENTS.md hard rule 3. **Done 12 Aug 2026** via a temporary `vault-setup` edge function (deleted after use — see `rationale.md`).
 - The same migration's `net.http_post` call must set `timeout_milliseconds := 130000` explicitly. `pg_net`'s default timeout is 5 seconds, far short of `tick`'s own 120 second internal budget; left at the default, the cron caller would consider the request timed out long before `tick` finishes its work.
 
 **Critical test scenarios**:
-- Happy path: `scan-create` with 2 trades and 3 suburbs (6 queries), left for `tick` to drain unattended, produces `businesses` (including no-website/social-only ones), `psi_results`, and `leads` rows for every discovered business and a `completed` status, verifies **AC-1** through **AC-6**, **AC-9**.
-- Second scan, same tenant: run a second small scan that overlaps some of the first scan's trades/suburbs; confirm rediscovered businesses still get `last_scan_id` updated, still get correctly cutoff-filtered and lead-created for the *second* scan specifically, verifies **AC-4**, **AC-6**, **AC-13** and the steady-state gap the cross check identified in AC-9's original single-scan-only test.
-- Denial and resume: temporarily lower a test tenant's `api_budgets.free_allowance` below what a scan needs, confirm the scan parks at `awaiting_approval` with its triggering message unarchived, then confirm the next `tick` picks it back up (not silently skipped) and resumes correctly once the allowance is raised again, verifies **AC-2**, **AC-7**.
-- Concurrent scans: create a second scan while the first is still `searching`; confirm the second scan's messages are never drained until the first finishes, verifies **AC-2**, **AC-3**.
-- Redelivery: manually requeue a `sweep_search` or `sweep_psi` message for work already recorded, confirm no duplicate `psi_results` row (the unique index fires and is caught, not thrown), and no second reservation spent, verifies **AC-10**.
-- Auth/permission: `scan-create` called with the demo tenant's token is rejected by RLS before any queue message is ever sent, verifies part of **AC-1**'s tenant scoping and the demo tenant invariant.
+- Happy path: `scan-create` with 2 trades and 3 suburbs (6 queries), left for `tick` to drain unattended, produces `businesses` (including no-website/social-only ones), `psi_results`, and `leads` rows for every discovered business and a `completed` status, verifies **AC-1** through **AC-6**, **AC-9**. **Run 12 Aug 2026**, see `verify.md`.
+- Second scan, same tenant: run a second small scan that overlaps some of the first scan's trades/suburbs; confirm rediscovered businesses still get `last_scan_id` updated, still get correctly cutoff-filtered and lead-created for the *second* scan specifically, verifies **AC-4**, **AC-6**, **AC-13** and the steady-state gap the cross check identified in AC-9's original single-scan-only test. **Run 12 Aug 2026**, see `verify.md`.
+- Denial and resume: temporarily lower a test tenant's `api_budgets.free_allowance` below what a scan needs, confirm the scan parks at `awaiting_approval` with its triggering message unarchived, then confirm the next `tick` picks it back up (not silently skipped) and resumes correctly once the allowance is raised again, verifies **AC-2**, **AC-7**. **Not yet run** — see Follow-up.
+- Concurrent scans: create a second scan while the first is still `searching`; confirm the second scan's messages are never drained until the first finishes, verifies **AC-2**, **AC-3**. **Not yet deliberately run** (no evidence of a violation across three real scans, but never forced with two scans genuinely overlapping in time).
+- Redelivery: manually requeue a `sweep_search` or `sweep_psi` message for work already recorded, confirm no duplicate `psi_results` row (the unique index fires and is caught, not thrown), and no second reservation spent, verifies **AC-10**. **Confirmed organically** — real redeliveries occurred during the 288-query test (see `verify.md`), not a manually forced one.
+- Auth/permission: `scan-create` called with the demo tenant's token is rejected by RLS before any queue message is ever sent, verifies part of **AC-1**'s tenant scoping and the demo tenant invariant. **Not yet run** — see Follow-up.
 
 ## Build plan
 
-1. Migration: add `businesses.last_scan_id` (nullable, `references scans on delete set null`), the `psi_results` insert trigger rolling up `scans.psi_completed`, and the partial unique index on `psi_results (business_id, scan_id)`, satisfies **AC-4**, **AC-6**, **AC-10**, **AC-13**.
-2. Migration: replace the `tick` cron job's `select 1` placeholder with a real `net.http_post` call to the `tick` function, `timeout_milliseconds := 130000`, reading the service role key from `vault.decrypted_secrets`; document the one time `vault.create_secret` step as a manual action, not a migration, satisfies **AC-2**.
-3. Build `supabase/functions/scan-create/index.ts`: authenticated, validates `trade_ids`/`suburb_ids`/`top_n`, derives and validates `region_id` from `suburb_ids`, inserts the `scans` row as `queued`, expands `scan_queries` — does **not** enqueue `sweep_search` (that moves to step 8), satisfies **AC-1**.
-4. Build `supabase/functions/tick/search.ts`: ports `textSearch()`, `isTradeBusiness()`, `BLOCKED_TYPES`, `TYPE_TO_TRADE`, `norm()`, `isFacebookOnly()` from `harvest.mjs` verbatim; drains `sweep_search` filtered to the active scan, releasing any other scan's messages unprocessed; the reservation gate covers both the typed call and the untyped retry (refund before retry); upserts `businesses` with the full conflict column list (`last_scan_id` always overwritten, `first_seen_scan_id` preserved, `website_kind` computed); park-on-denied; skips a `scan_queries` row already `done`, satisfies **AC-3**, **AC-7**, **AC-8**, **AC-10**, **AC-13**.
-5. Build `supabase/functions/tick/advance.ts`, search to measuring transition: computes the `ceiling()` cutoff over businesses where `last_scan_id = this scan`, selects qualifying businesses with a real (non social only) website, batches `sweep_psi`, sets `psi_total` and `status = 'measuring'`, satisfies **AC-4**.
-6. Build `supabase/functions/tick/psi.ts`: ports `psi()` from `harvest.mjs` verbatim (the two attempt retry, the 4xx early exit); drains `sweep_psi` filtered to the active scan; the redelivery skip checks both a pre-check and catches the unique index violation on insert (treats either as already done, not an error); park-on-denied, satisfies **AC-5**, **AC-7**, **AC-8**, **AC-10**.
-7. Extend `advance.ts`, measuring to final transition: upserts `leads` for **every** business where `last_scan_id = this scan` (not gated by PSI or `top_n`), applies the confirmed `completed` / `partial` / `failed` logic, sets `finished_at`, satisfies **AC-6**.
-8. Build `supabase/functions/tick/index.ts`: the entry point; takes an advisory lock for the request's duration (exits immediately if already held); finds the one active scan (oldest by `created_at`, including `awaiting_approval`) or returns immediately; if the scan is still `queued`, batches `sweep_search` and moves it to `searching` before draining; runs `search.ts` then `advance.ts` then `psi.ts` then `advance.ts` again inside the shared 120 second budget, satisfies **AC-2**, **AC-7**, **AC-12**.
-9. Deploy `tick` and `scan-create` (`verify_jwt = true` on both); run the one time `vault.create_secret` step; confirm the cron job fires and reaches `tick`, satisfies **AC-2**.
-10. Run the six query test scan against `scan-create` with Noel's seeded credentials; verify every table populates (including no-website/social-only leads) and the status machine transitions correctly, satisfies **AC-9**.
-11. Run a second, overlapping small scan on the same tenant; verify rediscovered businesses update `last_scan_id` correctly and still get cutoff-filtered and lead-created for the new scan, satisfies **AC-4**, **AC-6**, **AC-13**.
-12. Run the full 288 query scan as the end to end proof; verify `api_budgets` and `api_calls` tracked it correctly, satisfies **AC-9**.
-13. Run `get_advisors` (security and performance) after the new migration, per AGENTS.md's standing rule on any DDL change.
+1. [x] Migration: add `businesses.last_scan_id` (nullable, `references scans on delete set null`), the `psi_results` insert trigger rolling up `scans.psi_completed`, and the partial unique index on `psi_results (business_id, scan_id)`, satisfies **AC-4**, **AC-6**, **AC-10**, **AC-13**. — `supabase/migrations/20260811040000_15_engine_schema_additions.sql`
+2. [x] Migration: replace the `tick` cron job's `select 1` placeholder with a real `net.http_post` call to the `tick` function, `timeout_milliseconds := 130000`, reading the service role key from `vault.decrypted_secrets`; document the one time `vault.create_secret` step as a manual action, not a migration, satisfies **AC-2**. — `supabase/migrations/20260811040100_16_wire_tick_cron.sql`
+3. [x] Build `supabase/functions/scan-create/index.ts`: authenticated, validates `trade_ids`/`suburb_ids`/`top_n`, derives and validates `region_id` from `suburb_ids`, inserts the `scans` row as `queued`, expands `scan_queries` — does **not** enqueue `sweep_search` (that moves to step 8), satisfies **AC-1**. — `supabase/functions/scan-create/index.ts`
+4. [x] Build `supabase/functions/tick/search.ts`: ports `textSearch()`, `isTradeBusiness()`, `BLOCKED_TYPES`, `TYPE_TO_TRADE`, `norm()`, `isFacebookOnly()` from `harvest.mjs` verbatim; drains `sweep_search` filtered to the active scan, releasing any other scan's messages unprocessed; the reservation gate covers both the typed call and the untyped retry (refund before retry); upserts `businesses` with the full conflict column list (`last_scan_id` always overwritten, `first_seen_scan_id` preserved, `website_kind` computed); park-on-denied; skips a `scan_queries` row already `done`, satisfies **AC-3**, **AC-7**, **AC-8**, **AC-10**, **AC-13**. — `supabase/functions/tick/search.ts`, `lib.ts`
+5. [x] Build `supabase/functions/tick/advance.ts`, search to measuring transition: computes the `ceiling()` cutoff over businesses where `last_scan_id = this scan`, selects qualifying businesses with a real (non social only) website, batches `sweep_psi`, sets `psi_total` and `status = 'measuring'`, satisfies **AC-4**. — `supabase/functions/tick/advance.ts`
+6. [x] Build `supabase/functions/tick/psi.ts`: ports `psi()` from `harvest.mjs` verbatim (the two attempt retry, the 4xx early exit); drains `sweep_psi` filtered to the active scan; the redelivery skip checks both a pre-check and catches the unique index violation on insert (treats either as already done, not an error); park-on-denied, satisfies **AC-5**, **AC-7**, **AC-8**, **AC-10**. — `supabase/functions/tick/psi.ts`
+7. [x] Extend `advance.ts`, measuring to final transition: upserts `leads` for **every** business where `last_scan_id = this scan` (not gated by PSI or `top_n`), applies the confirmed `completed` / `partial` / `failed` logic, sets `finished_at`, satisfies **AC-6**. — `supabase/functions/tick/advance.ts`
+8. [x] Build `supabase/functions/tick/index.ts`: the entry point; takes an advisory lock for the request's duration (exits immediately if already held); finds the one active scan (oldest by `created_at`, including `awaiting_approval`) or returns immediately; if the scan is still `queued`, batches `sweep_search` and moves it to `searching` before draining; runs `search.ts` then `advance.ts` then `psi.ts` then `advance.ts` again inside the shared 120 second budget, satisfies **AC-2**, **AC-7**, **AC-12**. — `supabase/functions/tick/index.ts`, `db.ts`, `queue.ts`, `spend.ts`, `state.ts`
+9. [x] Deploy `tick` and `scan-create` (`verify_jwt = true` on both); run the one time `vault.create_secret` step; confirm the cron job fires and reaches `tick`, satisfies **AC-2**. — both deployed; vault secret set via a temporary `vault-setup` helper function (deleted after use, see `rationale.md`); confirmed live via `cron.job_run_details` and `net._http_response` (401 before the secret existed, clean 200 after)
+10. [x] Run the six query test scan against `scan-create` with Noel's seeded credentials; verify every table populates (including no-website/social-only leads) and the status machine transitions correctly, satisfies **AC-9**. — scan `3da45cf5-648f-4d79-895c-c8099900fdb5`: 50 businesses (36 site/13 none/1 social), 36 psi_results, 50 leads, status `completed`. Also live-confirmed the 400-retry-refund path (9 attempts logged against 6 queries, net budget use of 6) and the redelivery unique-index catch (psi budget used 40 against 36 rows, no duplicates, no errors)
+11. [x] Run a second, overlapping small scan on the same tenant; verify rediscovered businesses update `last_scan_id` correctly and still get cutoff-filtered and lead-created for the new scan, satisfies **AC-4**, **AC-6**, **AC-13**. — scan `0a5bca46-851e-48c4-958c-b6f96094f44d` (same payload as scan 1): 49/50 rediscovered with `first_seen_scan_id` preserved + `last_scan_id` moved, 4 genuinely new, 1 not returned by Google this time (correctly left on scan 1), 54 distinct leads/54 rows, no duplicates
+12. [x] Run the full 288 query scan as the end to end proof; verify `api_budgets` and `api_calls` tracked it correctly, satisfies **AC-9**. — scan `15609c59-0546-4e1a-b499-9f827ac66ba7`: 288/288 queries, 0 failed, 396 new businesses (450 total across all three test scans), 95 psi_results, status `completed`. Found and documented a real budget-drift edge case (see Follow-up) — no data corruption, harmless for `psi` ($0 cost), unproven but theoretically possible for `places_text_search`
+13. [x] Run `get_advisors` (security and performance) after the new migration, per AGENTS.md's standing rule on any DDL change. — clean: only the two pre-existing, intentional warnings; no new findings from this build's migrations
 
 ## Consequences
 
@@ -170,10 +129,12 @@ No new tables. This weekend reuses `scans`, `scan_queries`, `businesses`, `psi_r
 - The single-active-scan-at-a-time design (matching `BUILD-PLAN.md` §6's singular phrasing, and actually enforced at the queue-drain level per AC-2/AC-3, not just assumed) means two scans started close together serialise rather than run concurrently — the second sits `queued` until the first reaches a terminal or parked state. Fine for a solo weekly tool; would need real per-scan queue partitioning or a scan-scoped lock if Sweep ever supported concurrent operators.
 
 **Neutral**:
-- The Vault based service role key step is a new one-time manual action outside of any committed migration, the first of its kind in this project; it should be written down somewhere durable (README or a runbook) so a project restore doesn't silently break the cron trigger.
+- The Vault based service role key step is a new one-time manual action outside of any committed migration, the first of its kind in this project; it should be written down somewhere durable (README or a runbook) so a project restore doesn't silently break the cron trigger. **Done** — recorded in `AGENTS.md`'s Supabase section.
 
 ## Follow-up
 
-- [ ] Document the one time `vault.create_secret('service_role_key', ...)` step somewhere durable (a short runbook note), so restoring the project from a backup or a fresh Supabase project doesn't silently leave `tick` unauthenticated.
+- [x] Document the one time `vault.create_secret('service_role_key', ...)` step somewhere durable — recorded in `AGENTS.md`'s Supabase section, 12 Aug 2026.
 - [ ] The denial and resume path (AC-7) has never been exercised against a live scan, only proven at the SQL level in Weekend 1. Worth a deliberate test once this weekend's build lands, by temporarily lowering a test budget.
 - [ ] `capture-snapshot` and the Notion sync remain explicitly out of scope (AC-11); Weekend 5 is where screenshot extraction is next expected to matter.
+- [ ] **Budget-drift edge case found during the 288-query test (12 Aug 2026):** `drainSearch`/`drainPsi`'s deadline check is soft — it only gates starting a new batch, not an in-flight one. If the platform's hard wall-clock kill fires mid-batch, a `reserve_api_calls()` can succeed moments before the process dies, orphaning that reservation (no corresponding write, message redelivers correctly later via pgmq's visibility timeout — no data loss, no duplicates, confirmed by the unique index and idempotency checks holding throughout testing). Observed a 20-unit `api_budgets.used` vs actual-attempts drift on `psi` (cost $0, harmless); the same mechanism is architecturally possible on `places_text_search` (the billed API) but was not observed in three live test scans. Needs a decision: tighten `BUDGET_MS` headroom, or make reserve+call+archive race against the deadline per-message.
+- [ ] **Latent status-computation gap found during the second (overlapping) test scan:** `advance.ts`'s final-status logic uses `businesses_found` (per migration 08's trigger, which only counts genuinely new discoveries via `first_seen_scan_id`) to decide `failed`. On a scan with 100% overlap and zero new businesses, `businesses_found` would read 0 and the scan would be marked `failed` even if it successfully rediscovered and created leads for every business it touched. Not hit in testing (every rescan found at least a few new businesses), but the logic as built doesn't match AC-6's stated intent ("failed only if the scan produced zero businesses **at all**"). The spec names `businesses_found` as the source column, so this was built to spec as written — flagging as a spec/implementation gap rather than silently changing the source.

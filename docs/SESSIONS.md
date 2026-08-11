@@ -11,6 +11,37 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-12 · claude-code · weekend 2 engine built and proven live
+
+**Did**
+- Migrations 15 (`businesses.last_scan_id`, `psi_results_roll_completed` trigger, `psi_results_business_scan_uidx` partial unique index) and 16 (real `net.http_post` cron wiring, `timeout_milliseconds := 130000`, reads the service role key from Vault). Applied and confirmed against remote; filenames renamed to match the remote ledger's actual apply timestamps (same drift issue as last session — always check `list_migrations` before naming a new file).
+- Built and deployed `supabase/functions/scan-create/index.ts` (validates `trade_ids`/`suburb_ids`/`top_n`, derives `region_id`, resolves `tenant_id` via `current_tenant()` RPC, inserts `scans` + `scan_queries`).
+- Built and deployed `supabase/functions/tick/` — `index.ts` (advisory lock, active-scan pickup, orchestration), `db.ts`, `queue.ts`, `spend.ts`, `state.ts`, `search.ts`, `psi.ts`, `advance.ts`, `lib.ts` (harvest.mjs's pure logic ported verbatim).
+- `tick` talks to Postgres directly via `postgres.js`/`SUPABASE_DB_URL`, not `supabase-js`/PostgREST — needed raw `pgmq.read/archive/set_vt/send` (an extension schema PostgREST doesn't expose) and a conflict-aware `businesses` upsert (omit `first_seen_scan_id` from the `on conflict do update set` list to preserve it while overwriting everything else). Not in the original spec; recorded as an implementation decision in the spec's `rationale.md`.
+- Ran three real scans end to end: 6-query, an identical 6-query rescan, and the full 288-query scan. All verified directly in Postgres (`scans`, `scan_queries`, `businesses`, `psi_results`, `leads`, `api_budgets`, `api_calls`).
+- Split spec 0003 from a single file into a directory (`index.md`/`rationale.md`/`verify.md`) on first `verify.md` write, per the develop skill's convention. Repointed `docs/scope/scope.md` (3 links) and `BUILD-PLAN.md` §14 to the new `index.md` path.
+- Marked Weekend 2 `done` in scope, spec 0003 `Status` advanced `Proposed` → `In Progress` → `Accepted`.
+
+**Decided**
+- Noel forgot the `NOEL_PASSWORD` he'd set last session; Supabase secrets are write-only, unrecoverable by any tool. Fixed without ever routing the real password or the service role key through the agent: deployed a temporary `vault-setup` function (read `SUPABASE_SERVICE_ROLE_KEY` from its own env, wrote it to Vault) and a temporary `reset-password` function (`verify_jwt = false`, gated by a throwaway `RESET_TOKEN` secret, since the whole problem was Noel having no JWT to offer). Both deleted immediately after use; nothing sensitive ever appeared in this transcript.
+- Business rule: `advance.ts`'s final scan status reads `businesses_found` per the spec's own Value sourcing table, even though migration 08's trigger only counts genuinely new discoveries (not total businesses touched). Built to spec as written rather than silently changing the source column — flagged as a latent gap instead.
+
+**Didn't work**
+- First attempt at asking Noel for his access token via a plain password-grant curl failed — he'd left the literal `<your password>` placeholder in the command unsubstituted, then genuinely forgot the real password on the next attempt.
+- First `Monitor` polling script crashed immediately (`(eval):6: read-only variable: status`) — `status` collides with zsh's own reserved `$status` exit-code variable. Renamed to `scan_status` and it worked. Watch for this in any future zsh polling script.
+
+**Open**
+- **Budget-accounting drift**: `drainSearch`/`drainPsi`'s deadline check is soft (only gates starting a new batch, not an in-flight one). A platform hard-kill mid-batch can orphan a `reserve_api_calls()` increment with no matching write; the message redelivers correctly later (pgmq vt), so no data loss, but `api_budgets.used` drifts high. Observed a real 20-unit drift on `psi` (cost $0, harmless) during the 288-query test; architecturally possible but unproven on the billed `places_text_search` API. Needs a decision: tighten `BUDGET_MS` headroom, or race reserve+call+archive against the deadline per message.
+- **Status-logic gap**: a scan with 100% overlap and zero new businesses would read `businesses_found = 0` and get marked `failed` despite successfully rediscovering and lead-creating for every business it touched. Not hit in testing (every rescan found a few new ones). See spec 0003's Follow-up for the full writeup.
+- AC-7 (denial/resume), AC-12 (concurrent-tick guard forced rather than merely unobserved), and AC-1's demo-tenant-rejection path were never exercised — listed in `verify.md`'s Open section.
+- UptimeRobot keepalive still not configured (carried over from two sessions ago).
+- Leaked password protection still disabled on Supabase Auth (carried over, no MCP tool exposes the setting).
+
+**Next**
+No code prerequisite blocks the next feature. Candidates, in the order `BUILD-PLAN.md` §10 implies: Weekend 3 (the leads grid, first real UI) or clearing the AC-7/AC-12 test gaps first via `/check verify weekend-2-engine-spend-gate`. Either is reasonable; the two open findings above don't block starting Weekend 3, they're independent of the frontend.
+
+**Touched** — `AGENTS.md`, `BUILD-PLAN.md`, `docs/scope/scope.md`, `docs/specs/0003-weekend-2-engine-spend-gate/{index.md,rationale.md,verify.md}` (new, replaces the old single-file spec), `supabase/config.toml`, `supabase/migrations/20260811091301_15_engine_schema_additions.sql`, `supabase/migrations/20260811091324_16_wire_tick_cron.sql`, `supabase/functions/scan-create/`, `supabase/functions/tick/`
+
 ## 2026-08-11 · claude-code · weekend 2 spec + hygiene
 
 **Did**

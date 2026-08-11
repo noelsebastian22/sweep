@@ -72,6 +72,14 @@ Schema is fully applied — 16 tables, RLS on all of them, plus the `lead_rows` 
   `current_tenant_is_demo()` are executable by `authenticated`, because RLS policies are
   evaluated with the invoker's privileges. Do not "fix" these by revoking — it breaks
   every policy in the schema
+- **The `tick` cron job authenticates via a Vault secret, not a committed value.** It reads
+  the service role key back with `select decrypted_secret from vault.decrypted_secrets
+  where name = 'service_role_key'` (migration 16). That secret is created once, by hand,
+  directly against the database — `select vault.create_secret(<the actual key>,
+  'service_role_key')` — and is **never** run through an agent, a migration file, or a
+  chat message; the raw key must never enter a tool call or a transcript. If a fresh
+  Supabase project is ever restored from a backup, this step has to be redone manually or
+  `tick` silently stops authenticating (the cron job still fires, it just gets a 401)
 
 ## Hard rules
 

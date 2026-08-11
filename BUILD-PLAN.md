@@ -1117,7 +1117,7 @@ Updated as work lands. Weekend numbers refer to §10.
 | **1 — Foundations (backend half)** | **Done, 9 Aug 2026** | Supabase project `sweep` created in `ap-southeast-2` (Sydney). Full §5 schema applied as 12 migrations, RLS on all 16 tables, spend gate tested. See below |
 | 0 — Style tile | **Done, 10 Aug 2026** | Angular scaffolded at repo root, Tailwind v4 + §7 tokens, Geist Sans/Mono self-hosted, 7-section style tile at `/style`. `ng build` clean. See session log |
 | 1 — Foundations (Angular half) | **Done, 11 Aug 2026** | Migration 13 applied (pgmq, pg_cron, pg_net, queues, tick cron). Health + seed edge functions deployed and run. AuthStore, login, auth guard, layout shell, dashboard built. `ng build` clean. See session log |
-| 2 — Engine + spend gate | **Spec confirmed, 11 Aug 2026** | `docs/specs/0003-weekend-2-engine-spend-gate.md`. Not built yet — next session runs `/develop weekend-2-engine-spend-gate` |
+| 2 — Engine + spend gate | **Done, 12 Aug 2026** | `tick` + `scan-create` deployed, migrations 15–16 applied, cron authenticating via Vault. Proven against three live scans (6, 6-again, 288 queries). Two known follow-ups: a budget-accounting drift edge case and a `businesses_found=0` status-logic gap. See `docs/specs/0003-weekend-2-engine-spend-gate/` |
 | 3–7 | Not started | |
 
 ### What exists in Supabase now

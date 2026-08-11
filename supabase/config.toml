@@ -13,3 +13,13 @@ verify_jwt = false
 # gateway on top of that.
 [functions.seed]
 verify_jwt = true
+
+# scan-create: authenticated — called with the caller's own user JWT. tenant_id is
+# derived from that token, never a request field.
+[functions.scan-create]
+verify_jwt = true
+
+# tick: cron-triggered only, over pg_net. The cron job's own net.http_post call supplies
+# the service role key as the bearer token, so nothing else is expected to invoke it.
+[functions.tick]
+verify_jwt = true
