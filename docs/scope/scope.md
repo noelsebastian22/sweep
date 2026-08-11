@@ -7,6 +7,7 @@
 | Weekend 0: Style tile | done | [0001](../specs/0001-angular-scaffold-style-tile.md) |
 | Weekend 1: Angular foundations | done except keepalive | [0002](../specs/0002-weekend-1-angular-foundations.md) |
 | Weekend 2: Engine and spend gate | done | [0003](../specs/0003-weekend-2-engine-spend-gate/index.md) |
+| Weekend 3: Leads grid | in-progress | [0004](../specs/0004-weekend-3-leads-grid/index.md) |
 
 ---
 
@@ -49,3 +50,18 @@ Ports `harvest.mjs` into a `tick` edge function that a `pg_cron` job wakes every
   - [x] The `tick` engine itself: `search.ts`, `advance.ts`, `psi.ts` ported from `harvest.mjs`, spend-gated, idempotent under redelivery, scoped to one active scan at a time · satisfies AC-3, AC-5, AC-7, AC-8, AC-10, AC-12
   - [x] End to end verification: a six query test scan, an overlapping second scan, then one full 288 query scan, all verified directly in Postgres · satisfies AC-9
 - [ ] Verify it: /check verify weekend-2-engine-spend-gate
+
+### Weekend 3: Leads grid · in-progress
+
+The first real product screen: a dense, virtual scrolled table of every business the engine has discovered, sorted and coloured by lead strength. Builds `shared/scoring/score.ts` (the pure port of `harvest.mjs`'s `penalty()`/`score()`) and `leads.store.ts`, both of which the scoring lab and the map reuse later. No new API surface — reads `lead_rows`, writes only `leads.status`, all direct through Supabase with existing RLS. [0004](../specs/0004-weekend-3-leads-grid/index.md)
+
+**Decision**: Single client side fetch of `lead_rows` into an NgRx SignalStore, with sort, filter, score, and heat banding all derived as `computed()` signals — no round trip on any interaction, which is also what the weekend 6 scoring lab already assumes. Saved views, column visibility config, bulk status change, and the palette's scan/view-switch actions are deferred to the weekends that build their targets. [0004](../specs/0004-weekend-3-leads-grid/index.md)
+
+- [x] Design it (spec)
+- [ ] Build it: /develop weekend-3-leads-grid
+  - [ ] Data foundations: migration seeding default `scoring_profiles`, `core/supabase.service.ts` extraction, `AuthStore.isDemo`, `shared/scoring/score.ts` with unit tests · satisfies AC-2, AC-12, AC-13
+  - [ ] Data flow to screen: `leads.store.ts` fetch of `lead_rows` + default weights, `computed()` signals for score/sort/heat banding · satisfies AC-1 (data half), AC-2, AC-3, AC-4
+  - [ ] Grid visuals and scale: `hairline-table`/`heat-cell` components, `@angular/cdk` virtual scroll · satisfies AC-1 (visual and performance halves)
+  - [ ] Interaction: filter chips and ranges, keyboard nav (`j`/`k`/`enter`), inline lead drawer with status change and demo tenant disablement · satisfies AC-5, AC-6, AC-7, AC-8
+  - [ ] Palette and polish: global `⌘K` command palette, empty/loading/error states · satisfies AC-9, AC-10, AC-11
+- [ ] Verify it: /check verify weekend-3-leads-grid
