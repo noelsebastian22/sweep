@@ -16,6 +16,7 @@ export const routes: Routes = [
     loadComponent: () => import('./layout/app-layout').then((m) => m.AppLayout),
     children: [
       { path: '', loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.Dashboard) },
+      { path: 'leads', loadComponent: () => import('./features/leads/leads-grid/leads-grid').then((m) => m.LeadsGrid) },
     ],
   },
 ];

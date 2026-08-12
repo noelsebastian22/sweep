@@ -1118,7 +1118,8 @@ Updated as work lands. Weekend numbers refer to §10.
 | 0 — Style tile | **Done, 10 Aug 2026** | Angular scaffolded at repo root, Tailwind v4 + §7 tokens, Geist Sans/Mono self-hosted, 7-section style tile at `/style`. `ng build` clean. See session log |
 | 1 — Foundations (Angular half) | **Done, 11 Aug 2026** | Migration 13 applied (pgmq, pg_cron, pg_net, queues, tick cron). Health + seed edge functions deployed and run. AuthStore, login, auth guard, layout shell, dashboard built. `ng build` clean. See session log |
 | 2 — Engine + spend gate | **Done, 12 Aug 2026** | `tick` + `scan-create` deployed, migrations 15–16 applied, cron authenticating via Vault. Proven against three live scans (6, 6-again, 288 queries). Two known follow-ups: a budget-accounting drift edge case and a `businesses_found=0` status-logic gap. See `docs/specs/0003-weekend-2-engine-spend-gate/` |
-| 3–7 | Not started | |
+| 3 — Leads grid | **Built, 12 Aug 2026, verify pending** | Migration 17 applied (seeds default `scoring_profiles`). `score.ts` (21 unit tests pass), `leads.store.ts`, hairline table + heat cell + CDK virtual scroll, filters, `j`/`k`/`enter` nav, inline drawer, ⌘K palette (`@angular/cdk` + `@angular/aria` added). `ng build` clean. Verified live against 450 real leads on Noel's tenant read-only, and against 40 temp seeded/deleted leads on the demo tenant for full read+write coverage — Noel's current password isn't in `docs/SESSIONS.md` (rotated since), so full-tenant write testing needs a session with it. See `docs/specs/0004-weekend-3-leads-grid/` |
+| 4–7 | Not started | |
 
 ### What exists in Supabase now
 

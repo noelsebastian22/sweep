@@ -58,10 +58,10 @@ The first real product screen: a dense, virtual scrolled table of every business
 **Decision**: Single client side fetch of `lead_rows` into an NgRx SignalStore, with sort, filter, score, and heat banding all derived as `computed()` signals — no round trip on any interaction, which is also what the weekend 6 scoring lab already assumes. Saved views, column visibility config, bulk status change, and the palette's scan/view-switch actions are deferred to the weekends that build their targets. [0004](../specs/0004-weekend-3-leads-grid/index.md)
 
 - [x] Design it (spec)
-- [ ] Build it: /develop weekend-3-leads-grid
-  - [ ] Data foundations: migration seeding default `scoring_profiles`, `core/supabase.service.ts` extraction, `AuthStore.isDemo`, `shared/scoring/score.ts` with unit tests · satisfies AC-2, AC-12, AC-13
-  - [ ] Data flow to screen: `leads.store.ts` fetch of `lead_rows` + default weights, `computed()` signals for score/sort/heat banding · satisfies AC-1 (data half), AC-2, AC-3, AC-4
-  - [ ] Grid visuals and scale: `hairline-table`/`heat-cell` components, `@angular/cdk` virtual scroll · satisfies AC-1 (visual and performance halves)
-  - [ ] Interaction: filter chips and ranges, keyboard nav (`j`/`k`/`enter`), inline lead drawer with status change and demo tenant disablement · satisfies AC-5, AC-6, AC-7, AC-8
-  - [ ] Palette and polish: global `⌘K` command palette, empty/loading/error states · satisfies AC-9, AC-10, AC-11
+- [x] Build it: /develop weekend-3-leads-grid · code in `src/app/features/leads/`, `src/app/shared/scoring/score.ts`, `src/app/shared/ui/{hairline-table,heat-cell,command-palette}/`, `src/app/core/{supabase.service,keyboard.service}.ts`, `supabase/migrations/20260812082954_17_seed_default_scoring_profiles.sql`
+  - [x] Data foundations: migration seeding default `scoring_profiles`, `core/supabase.service.ts` extraction, `AuthStore.isDemo`, `shared/scoring/score.ts` with unit tests · satisfies AC-2, AC-12, AC-13
+  - [x] Data flow to screen: `leads.store.ts` fetch of `lead_rows` + default weights, `computed()` signals for score/sort/heat banding · satisfies AC-1 (data half), AC-2, AC-3, AC-4
+  - [x] Grid visuals and scale: `hairline-table`/`heat-cell` components, `@angular/cdk` virtual scroll · satisfies AC-1 (visual and performance halves)
+  - [x] Interaction: filter chips and ranges, keyboard nav (`j`/`k`/`enter`), inline lead drawer with status change and demo tenant disablement · satisfies AC-5, AC-6, AC-7, AC-8
+  - [x] Palette and polish: global `⌘K` command palette, empty/loading/error states · satisfies AC-9, AC-10, AC-11
 - [ ] Verify it: /check verify weekend-3-leads-grid

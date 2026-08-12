@@ -8,6 +8,12 @@
         "value": "geist sans",
         "createdAt": "2026-08-10T23:16:43.756Z",
         "reason": "User confirmed Geist Sans is intentional — locked system-wide typeface decision in BUILD-PLAN.md §7"
+      },
+      {
+        "rule": "overused-font",
+        "value": "geist mono",
+        "createdAt": "2026-08-12T09:20:11.022Z",
+        "reason": "Locked project design system (BUILD-PLAN.md §7): Geist Mono is the mandated face for all numerics/labels/IDs, used identically across every existing file (style-tile, dashboard, login, app-layout)."
       }
     ]
   }

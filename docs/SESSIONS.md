@@ -11,6 +11,40 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-12 · claude-code · weekend 3 leads grid built and proven live
+
+**Did**
+- Migration 17: seeds one `is_default=true` `scoring_profiles` row per tenant with `harvest.mjs`'s constants. Applied, verified on both tenants.
+- `core/supabase.service.ts` (client extracted out of `auth.store.ts`), `AuthStore.isDemo` (joins `tenants.is_demo` in `loadProfile`).
+- `shared/scoring/score.ts`: pure port of `penalty()`/`score()`, `mergeScoringWeights`, `scoreBreakdown` for the drawer's derivation string. 21 unit tests in `score.spec.ts`, all pass.
+- `features/leads/leads.store.ts`: NgRx SignalStore, one fetch of `lead_rows` + default weights, `computed()` signals for score, the AC-3 heat basis/percentile banding (collapses correctly on a degenerate set), filter, sort.
+- `shared/ui/hairline-table`, `shared/ui/heat-cell`, CDK virtual scroll (`@angular/cdk` added), `features/leads/leads-grid/leads-grid.ts` wiring it all together with filter chips, PSI/rating ranges, search.
+- `core/keyboard.service.ts` (global shortcut + palette registry), `features/leads/lead-drawer/lead-drawer.ts` (status write, demo-tenant disablement, `?lead=` query param), `shared/ui/command-palette` on `@angular/aria` combobox/listbox (added).
+- Route `/leads` added to `app.routes.ts`, nav link added to `app-layout.ts`.
+- Fixed a real pre-existing bug: `postcss.config.mjs` was never read by `ng build`/`ng serve` — Angular's builder only recognizes `postcss.config.json`/`.postcssrc.json`. Every `--color-sw-*` token has been compiling to nothing since that file was written; the whole app has been rendering colourless (login, dashboard, style tile, this grid) with no one noticing. Replaced with `postcss.config.json`, confirmed `:root` now carries the tokens in both dev and prod builds.
+- Verified live in Chrome: seeded 40 temp businesses/leads onto the demo tenant directly in Postgres (it had zero real data and no reference tables), exercised every AC, deleted all of it afterward — demo tenant is back to empty. Read-only spot-checked against Noel's real 450-lead tenant via direct SQL.
+- `docs/scope/scope.md` weekend 3 build box + 5 sub-boxes ticked. `docs/specs/0004-weekend-3-leads-grid/index.md` Status → `In Progress`. `docs/specs/0004-weekend-3-leads-grid/verify.md` written (full AC checklist).
+
+**Decided**
+- Used `resource()`/manual `patchState` pattern (matching `AuthStore`'s existing convention) instead of the build plan's literal `httpResource()` wording for `leads.store.ts` — `httpResource()` is HttpClient-specific and doesn't wrap a `supabase-js` call; `resource()`/plain async + `patchState` is what the codebase already does and makes optimistic status-update patching straightforward.
+- Heat band collapse rule (AC-3, not fully pinned by the spec): with ≤5 distinct score values in the basis, bands are the direct rank (0..n-1, contiguous); above 5, percentile bucketing across bands 0-4. Ties always share a band either way.
+
+**Didn't work**
+- Tried logging in as `noel@nooel-sebastian.com` with the `demo1234!` password from `docs/SESSIONS.md` — 400 invalid_credentials (confirmed via direct curl against the auth endpoint, not a browser quirk). An earlier entry (12 Aug, budget/password session) shows Noel's password was reset since that log line was written and the log was never updated. Did not attempt further guesses. Verified with the demo tenant instead (seeded temp data, see above).
+- First `left_click` on a palette option (`ngOption` in `selectionMode="explicit"`) didn't register a selection even after adding an explicit `(click)` handler — only keyboard `enter` selection works. AC-9 only requires the keyboard flow, so left as a known rough edge rather than sunk further time into Angular Aria's click semantics.
+- First couple of browser `find`+coordinate-based clicks landed on stale positions after the page re-rendered (filtered row count shrank, shifting layout) — switched to re-`find`-ing elements by ref right before each click rather than reusing coordinates across screenshots.
+
+**Open**
+- Noel's current login password isn't recorded anywhere agents can read (by design) — a full read+write pass against his real 450-lead tenant needs a session where he's present, or a fresh `NOEL_PASSWORD` secret + reset flow like the one used earlier this week.
+- Command palette mouse-click selection (see Didn't work above) — cosmetic, not spec-blocking.
+- `/check verify weekend-3-leads-grid` not yet run — `docs/specs/0004-weekend-3-leads-grid/verify.md` has the checklist.
+- Weekend 2's two follow-ups (budget-accounting drift, `businesses_found=0` status logic) remain open, untouched this session.
+
+**Next**
+- `/check verify weekend-3-leads-grid`, then mark the feature `done` and mirror the spec status to `Accepted`.
+
+**Touched** — `supabase/migrations/20260812082954_17_seed_default_scoring_profiles.sql`, `src/app/core/supabase.service.ts`, `src/app/core/keyboard.service.ts`, `src/app/stores/auth.store.ts`, `src/app/shared/scoring/score.ts`, `src/app/shared/scoring/score.spec.ts`, `src/app/shared/ui/hairline-table/hairline-table.ts`, `src/app/shared/ui/heat-cell/heat-cell.ts`, `src/app/shared/ui/command-palette/command-palette.ts`, `src/app/features/leads/leads.store.ts`, `src/app/features/leads/leads-grid/leads-grid.ts`, `src/app/features/leads/lead-drawer/lead-drawer.ts`, `src/app/app.routes.ts`, `src/app/layout/app-layout.ts`, `postcss.config.json` (new), `postcss.config.mjs` (removed), `package.json`, `docs/scope/scope.md`, `docs/specs/0004-weekend-3-leads-grid/index.md`, `docs/specs/0004-weekend-3-leads-grid/verify.md`, `BUILD-PLAN.md` §14
+
 ## 2026-08-12 · claude-code · weekend 2 engine built and proven live
 
 **Did**
