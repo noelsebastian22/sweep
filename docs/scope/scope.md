@@ -51,7 +51,7 @@ Ports `harvest.mjs` into a `tick` edge function that a `pg_cron` job wakes every
   - [x] End to end verification: a six query test scan, an overlapping second scan, then one full 288 query scan, all verified directly in Postgres · satisfies AC-9
 - [x] Verify it: run by hand 13 Aug 2026 (`/check` is not installed in this repo) — every step in `verify.md` ticked, including the four AC-7/AC-12/AC-1 gaps the first pass left open, plus fixes for both `index.md` Follow-up findings
 
-### Weekend 3: Leads grid · in-progress
+### Weekend 3: Leads grid · done
 
 The first real product screen: a dense, virtual scrolled table of every business the engine has discovered, sorted and coloured by lead strength. Builds `shared/scoring/score.ts` (the pure port of `harvest.mjs`'s `penalty()`/`score()`) and `leads.store.ts`, both of which the scoring lab and the map reuse later. No new API surface — reads `lead_rows`, writes only `leads.status`, all direct through Supabase with existing RLS. [0004](../specs/0004-weekend-3-leads-grid/index.md)
 
@@ -64,4 +64,4 @@ The first real product screen: a dense, virtual scrolled table of every business
   - [x] Grid visuals and scale: `hairline-table`/`heat-cell` components, `@angular/cdk` virtual scroll · satisfies AC-1 (visual and performance halves)
   - [x] Interaction: filter chips and ranges, keyboard nav (`j`/`k`/`enter`), inline lead drawer with status change and demo tenant disablement · satisfies AC-5, AC-6, AC-7, AC-8
   - [x] Palette and polish: global `⌘K` command palette, empty/loading/error states · satisfies AC-9, AC-10, AC-11
-- [ ] Verify it: /check verify weekend-3-leads-grid
+- [x] Verify it: run by hand 13 Aug 2026 (`/check` is not installed in this repo) — all 22 UI steps and 3 command steps ticked across both tenants, AC-1..AC-13 covered. Two non-blocking findings and one build warning recorded in `verify.md`
