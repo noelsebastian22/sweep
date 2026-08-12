@@ -45,11 +45,21 @@ export async function advanceAfterPsi(sql: Sql, scanId: string): Promise<void> {
     select total_queries, completed_queries, failed_queries, businesses_found
       from scans where id = ${scanId}`;
 
-  // failed only if the scan produced zero businesses at all; partial if finished but some
-  // queries failed; completed otherwise. A denied reservation never fails a scan_queries
-  // row outright (it parks instead, per AC-7), so failed_queries already captures every
-  // path a "partial" outcome can come from — there is no separate denial flag to source.
-  const status = scan.businesses_found === 0 ? 'failed' : scan.failed_queries > 0 ? 'partial' : 'completed';
+  // Status describes whether the scan did its work, not what it found.
+  //
+  // This used to read businesses_found, which migration 08's trigger only increments on
+  // first_seen_scan_id — genuinely new discoveries. A rescan with 100% overlap therefore
+  // scored zero and was marked failed despite every query succeeding and every business
+  // being rediscovered and lead-created. A region that legitimately contains nothing would
+  // have failed the same way. completed_queries counts scan_queries rows that reached
+  // 'done', which is the honest measure: zero means nothing resolved, so the scan really
+  // did fail.
+  //
+  // A denied reservation never fails a scan_queries row outright (it parks instead, per
+  // AC-7), so failed_queries still captures every path a "partial" outcome comes from.
+  const status = scan.completed_queries === 0
+    ? 'failed'
+    : scan.failed_queries > 0 ? 'partial' : 'completed';
 
   await sql`update scans set status = ${status}, finished_at = now() where id = ${scanId}`;
 }

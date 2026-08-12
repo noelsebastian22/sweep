@@ -22,11 +22,14 @@ Deno.serve(async (req: Request) => {
 
   try {
     const locked = await tryLock(sql);
-    if (!locked) return json({ processed: false, scan_id: null }); // another tick is still running
+    // reason distinguishes the two ways a tick can decline to do work. They were
+    // indistinguishable in the response until now, which made AC-12's guard impossible to
+    // observe from outside: a refused lock and an idle system looked identical.
+    if (!locked) return json({ processed: false, scan_id: null, reason: 'locked' });
 
     try {
       const scan = await pickActiveScan(sql);
-      if (!scan) return json({ processed: false, scan_id: null });
+      if (!scan) return json({ processed: false, scan_id: null, reason: 'no_active_scan' });
 
       if (scan.status === 'queued') {
         await enqueueSearchBatch(sql, scan);
@@ -58,7 +61,7 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      return json({ processed: true, scan_id: scan.id });
+      return json({ processed: true, scan_id: scan.id, reason: null });
     } finally {
       await unlock(sql);
     }

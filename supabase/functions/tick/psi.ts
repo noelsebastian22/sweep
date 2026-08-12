@@ -7,7 +7,7 @@
 
 import type { Sql } from './db.ts';
 import { archiveMessage, readQueue, releaseMessage } from './queue.ts';
-import { reserve, logCall } from './spend.ts';
+import { reserve, recordStatus } from './spend.ts';
 import { pool, sleep } from './lib.ts';
 import type { ActiveScan } from './state.ts';
 
@@ -97,15 +97,19 @@ export async function drainPsi(sql: Sql, scan: ActiveScan, deadline: number): Pr
 
       if (parked) return;
 
-      const grant = await reserve(sql, payload.tenant_id, 'psi', 'free', 1);
-      if (grant === 'denied' || grant === 'no_budget') {
+      const r = await reserve(sql, payload.tenant_id, 'psi', 'free', scan.id, 1);
+      if (r.grant === 'denied' || r.grant === 'no_budget') {
         await sql`update scans set status = 'awaiting_approval' where id = ${scan.id}`;
         parked = true;
         return;
       }
 
+      // runPsi can span ~35s across its two attempts and the sleep between them. Before
+      // migration 18 the ledger row was only written after it returned, so a kill inside
+      // that window orphaned the reservation; the row now already exists and this only
+      // fills in the outcome.
       const outcome = await runPsi(payload.website_url);
-      await logCall(sql, { tenant: payload.tenant_id, scanId: scan.id, api: 'psi', sku: 'free', grantKind: grant, httpStatus: outcome.httpStatus });
+      await recordStatus(sql, r.callId, outcome.httpStatus);
 
       try {
         await sql`

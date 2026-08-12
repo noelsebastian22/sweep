@@ -49,7 +49,7 @@ Ports `harvest.mjs` into a `tick` edge function that a `pg_cron` job wakes every
   - [x] `scan-create` edge function: validates inputs, derives `region_id`, creates the scan and its `scan_queries` · satisfies AC-1
   - [x] The `tick` engine itself: `search.ts`, `advance.ts`, `psi.ts` ported from `harvest.mjs`, spend-gated, idempotent under redelivery, scoped to one active scan at a time · satisfies AC-3, AC-5, AC-7, AC-8, AC-10, AC-12
   - [x] End to end verification: a six query test scan, an overlapping second scan, then one full 288 query scan, all verified directly in Postgres · satisfies AC-9
-- [ ] Verify it: /check verify weekend-2-engine-spend-gate
+- [x] Verify it: run by hand 13 Aug 2026 (`/check` is not installed in this repo) — every step in `verify.md` ticked, including the four AC-7/AC-12/AC-1 gaps the first pass left open, plus fixes for both `index.md` Follow-up findings
 
 ### Weekend 3: Leads grid · in-progress
 

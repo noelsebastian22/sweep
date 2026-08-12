@@ -63,7 +63,9 @@ service.
 Project `sweep`, ref `ifwyufrepqkzsicjinfi`, region `ap-southeast-2`, Postgres 17.
 Schema is fully applied — 16 tables, RLS on all of them, plus the `lead_rows` view.
 
-- Schema lives in `supabase/migrations/`, 14 files, matching the remote ledger exactly
+- Schema lives in `supabase/migrations/`, 18 files, matching the remote ledger exactly.
+  **Check `list_migrations` before naming a new file** — the remote assigns the version
+  timestamp, and three sessions running have had to rename local files to match it
 - **Schema changes are migrations. Never edit through the dashboard.** Both agents can
   apply migrations through the Supabase MCP
 - **Run `get_advisors` (security *and* performance) after any DDL.** It catches missing
@@ -89,6 +91,11 @@ These are the ones that cost real money or leak real data if broken.
    first.** Not in a script, not in a test, not "just to check it works". Google Places
    Text Search is billed at Enterprise tier: $35/1,000 calls, 1,000 free per month. A full
    scan is 288 calls. See `BUILD-PLAN.md` §2 and §4.
+   Since migration 18 the reservation returns `(grant_kind, call_id)` and writes its own
+   `api_calls` row in the same transaction, so the counter and the ledger cannot diverge.
+   Hand a reservation back with `refund_api_call(call_id)`, never by decrementing `used`.
+   The invariant, and it should stay true:
+   `api_budgets.used = sum(api_calls.units) where refunded_at is null`
 2. **When a reservation returns `denied`, park — do not fail and do not retry.** Leave the
    queue message unarchived, set the scan to `awaiting_approval`, exit cleanly.
 3. **The service role key never enters the browser bundle, the repo, or a log line.** Edge
@@ -153,17 +160,19 @@ The service role key and the Google API keys are edge-function secrets, set with
 | `BUILD-PLAN.md` | The reasoning behind every decision. §14 is current build status |
 | `docs/SESSIONS.md` | Shared session log — see the session protocol above |
 | `docs/prompts/` | Reusable task prompts, one per weekend in §10 |
-| `supabase/migrations/` | 14 migrations, matching the remote ledger exactly |
+| `supabase/migrations/` | 18 migrations, matching the remote ledger exactly |
 | `.agents/skills/` | Shared skills. Symlinked into `.claude/skills/` |
 | `.commandcode/taste/` | Command Code's learned conventions. **Committed on purpose** |
 
 ## Current state
 
-Backend foundations are done: project created, schema applied, RLS on, spend gate tested.
-Nothing on the frontend exists yet.
+Weekends 0–3 are built. Backend is done and proven against real scans: schema applied, RLS
+on, spend gate tested, `tick` + `scan-create` deployed, the engine has run 288 queries end
+to end and parks and resumes correctly when the allowance runs out. On the frontend the
+style tile, app shell, auth, dashboard and the leads grid at `/leads` all exist.
 
-Next up, in order: the style tile (weekend 0 in §10), then seed data + pgmq + keepalive,
-then the engine port. The leads grid comes before the marketing page — the grid is what
-proves the design system survives real density.
+Next up: weekend 4 — the live scan screen (realtime subscriptions, progress rail, the
+paused-for-approval state). Then detail, map + lab, and the landing page last.
 
-See `BUILD-PLAN.md` §14 for detailed status.
+See `BUILD-PLAN.md` §14 for detailed status, and `docs/SESSIONS.md` for what the last
+session left open.

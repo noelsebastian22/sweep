@@ -1,0 +1,51 @@
+# Supabase pauses a free project after 7 days with no activity, and a paused project stops
+# answering entirely — the tick cron included. There is already a paused project in this
+# org, so the trap is real rather than theoretical.
+#
+# This pings the public health function, which runs a real `select` against `tenants`, so
+# it counts as database activity and not merely an HTTP request that a CDN could answer.
+#
+# Read this before relying on it as the only keepalive: GitHub disables scheduled
+# workflows after 60 days with no repo activity. That is exactly when Sweep is most likely
+# to need one — a portfolio project that has gone quiet. UptimeRobot is the primary for
+# that reason (BUILD-PLAN.md §12); this is the free second pinger that covers the window
+# while the repo is active. Scheduled runs are also best-effort and can be delayed under
+# load, which is irrelevant against a 7-day deadline.
+
+name: keepalive
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # every 6 hours; the deadline is 7 days, so this is ample
+  workflow_dispatch: # so it can be triggered by hand to prove it works
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping the health function
+        run: |
+          # The health function is public by design (supabase/config.toml sets
+          # verify_jwt = false) and returns only a liveness flag, no data, so there is no
+          # secret to inject here.
+          url="https://ifwyufrepqkzsicjinfi.supabase.co/functions/v1/health"
+
+          for attempt in 1 2 3; do
+            # A cold edge function can take a few seconds on first hit, hence the generous
+            # --max-time; a paused project fails to connect rather than answering slowly.
+            code=$(curl -sS --max-time 30 -o body.txt -w '%{http_code}' "$url" || echo "000")
+            echo "attempt $attempt: HTTP $code $(cat body.txt 2>/dev/null)"
+
+            if [ "$code" = "200" ]; then
+              echo "Project is awake."
+              exit 0
+            fi
+
+            [ "$attempt" -lt 3 ] && sleep 15
+          done
+
+          # Failing loudly is the point: a silent green tick on a paused project would be
+          # worse than no workflow at all.
+          echo "::error::Health check failed after 3 attempts — the project may be paused."
+          exit 1

@@ -236,18 +236,62 @@ Returns `free` · `paid` · `denied` · `no_budget`.
 A companion `refund_api_calls()` decrements on responses Google does not bill — the 4xx
 paths that `textSearch()` already handles. Reserve pessimistically, refund on failure.
 
+#### Revised 13 Aug 2026 — the reservation owns the log line (migration 18)
+
+The signature above is the original. It shipped, ran three real scans, and left twenty
+orphaned reservations on `psi`: the counter was incremented by `reserve_api_calls()`, but
+the matching `api_calls` row was only written *after* the HTTP call returned, and `runPsi`
+spans up to ~35s across its two attempts and the sleep between them. A platform kill inside
+that window moved the counter with nothing to show for it.
+
+Tuning the deadline would not have fixed this — the exposure is the gap between the
+reservation and the log write, not the batch loop. So the reservation now writes its own
+row, in the same transaction as the increment:
+
+```sql
+reserve_api_calls(p_tenant uuid, p_api text, p_sku text, p_n int, p_scan uuid default null)
+  returns (grant_kind text, call_id bigint)   -- call_id is null when refused
+```
+
+- `api_calls` gains `units` (what the row reserved) and `refunded_at`.
+- `refund_api_calls(tenant, api, sku, n, kind)` is replaced by **`refund_api_call(call_id)`**,
+  which reads the amount off the row it is refunding, so a caller can no longer hand back
+  an amount that does not match what it took. It is idempotent, and it *marks* the row
+  rather than deleting it — refunded 4xx attempts stay visible as history, they just stop
+  counting.
+- Callers fill in the outcome afterwards with a plain `update api_calls set http_status`.
+  That deliberately cannot create a row: if it never runs, the reservation still stands.
+
+The invariant this buys, which should stay true forever:
+
+```
+api_budgets.used = coalesce(sum(api_calls.units) where refunded_at is null, 0)
+```
+
+Note which direction the repair went. The twenty orphans were closed by **adding the
+missing ledger rows, not by lowering `used`** — an orphaned reservation may well correspond
+to a call that really went out, and under-reporting spend is the one direction this section
+must never fail in.
+
 ### Park, don't fail
 
 When a reservation is denied the worker **does not archive the queue message**. The job
 stays queued, the scan moves to `awaiting_approval`, and the worker exits cleanly.
 
 ```ts
-const grant = await rpc('reserve_api_calls', { p_n: 1, ... });
-if (grant === 'denied') {
+const r = await reserve(sql, tenant, api, sku, scanId, 1);
+if (r.grant === 'denied' || r.grant === 'no_budget') {
   await parkScan(scanId, 'awaiting_approval');
   return;                    // message unarchived — resumes on approval or next month
 }
 ```
+
+Verified live on 13 Aug 2026: a scan whose allowance was clamped parked at
+`awaiting_approval` having made zero API calls, consumed zero allowance, left both
+`scan_queries` `pending` and both queue messages unarchived with `read_ct = 1` — then
+resumed to `completed` once the allowance was restored. One caveat worth knowing before
+weekend 4 draws this state: the messages stay invisible for the remainder of their 120s
+`READ_VT`, so a parked scan resumes on the *second* tick after approval, not the first.
 
 Add `awaiting_approval` to the `scan_status` enum.
 
@@ -1066,7 +1110,7 @@ matter what a visitor clicks.
 | Notion sync | The current script writes to Notion. Keep it as an optional export in v2 rather than porting it now |
 | MapLibre basemap | Needs a **light** tile source with no account. OpenFreeMap `positron` first choice; CARTO positron as fallback. Desaturate labels in the style JSON so violet markers stay the only saturated element |
 | Radar sweep on light | The one motion whose readability depended on the retired dark palette. Prototype it in weekend 0's style tile, not weekend 4 |
-| Keepalive | Decide the mechanism in weekend 1 — uptime monitor, GitHub Actions cron, or a Cowork scheduled task |
+| Keepalive | **Decided 13 Aug 2026 — both.** `.github/workflows/keepalive.yml` pings the public `health` function every 6 hours and is committed, so it needs nothing from anyone. It is the *second* pinger, not the primary: GitHub disables scheduled workflows after 60 days of repo inactivity, which is exactly when a quiet portfolio project needs one. UptimeRobot (free tier, 5-minute checks, no card) does not decay and remains the primary — monitor URL `https://ifwyufrepqkzsicjinfi.supabase.co/functions/v1/health`, still to be created by hand |
 | Domain | `sweep.*` is likely gone. `noel-sebastian.com/sweep` works fine for portfolio purposes and costs nothing |
 | Places two-pass | Measure whether filtering on cheap-tier fields first actually reduces spend. Billing is per call, not per place, so it may not |
 | Free-tier drift | Google and Supabase both change free tiers. Re-check `unit_cost_usd` and `free_allowance` against current pricing before the first paid grant is ever approved |
@@ -1117,7 +1161,7 @@ Updated as work lands. Weekend numbers refer to §10.
 | **1 — Foundations (backend half)** | **Done, 9 Aug 2026** | Supabase project `sweep` created in `ap-southeast-2` (Sydney). Full §5 schema applied as 12 migrations, RLS on all 16 tables, spend gate tested. See below |
 | 0 — Style tile | **Done, 10 Aug 2026** | Angular scaffolded at repo root, Tailwind v4 + §7 tokens, Geist Sans/Mono self-hosted, 7-section style tile at `/style`. `ng build` clean. See session log |
 | 1 — Foundations (Angular half) | **Done, 11 Aug 2026** | Migration 13 applied (pgmq, pg_cron, pg_net, queues, tick cron). Health + seed edge functions deployed and run. AuthStore, login, auth guard, layout shell, dashboard built. `ng build` clean. See session log |
-| 2 — Engine + spend gate | **Done, 12 Aug 2026** | `tick` + `scan-create` deployed, migrations 15–16 applied, cron authenticating via Vault. Proven against three live scans (6, 6-again, 288 queries). Two known follow-ups: a budget-accounting drift edge case and a `businesses_found=0` status-logic gap. See `docs/specs/0003-weekend-2-engine-spend-gate/` |
+| 2 — Engine + spend gate | **Done and fully verified, 13 Aug 2026** | `tick` + `scan-create` deployed, migrations 15–16 applied, cron authenticating via Vault. Proven against four live scans (6, 6-again, 288, and a 2-query overlap rescan). Both follow-ups closed. The budget drift was misdiagnosed: the `places_text_search` −24 was correct refund behaviour, only psi's +20 was real, and it is now structurally impossible (migration 18 — the reservation writes its own `api_calls` row in the same transaction). The `businesses_found=0` status gap is fixed in `advance.ts` and proven on a real 100%-overlap rescan. AC-1, AC-7, AC-12 all closed; AC-12 needed a `reason` field on tick's response to make the lock observable at all. See `docs/specs/0003-weekend-2-engine-spend-gate/verify.md` |
 | 3 — Leads grid | **Built, 12 Aug 2026, verify pending** | Migration 17 applied (seeds default `scoring_profiles`). `score.ts` (21 unit tests pass), `leads.store.ts`, hairline table + heat cell + CDK virtual scroll, filters, `j`/`k`/`enter` nav, inline drawer, ⌘K palette (`@angular/cdk` + `@angular/aria` added). `ng build` clean. Verified live against 450 real leads on Noel's tenant read-only, and against 40 temp seeded/deleted leads on the demo tenant for full read+write coverage — Noel's current password isn't in `docs/SESSIONS.md` (rotated since), so full-tenant write testing needs a session with it. See `docs/specs/0004-weekend-3-leads-grid/` |
 | 4–7 | Not started | |
 
@@ -1141,7 +1185,8 @@ Deviations from the §5 DDL as written, all deliberate:
   than one `for all`. A `for all` policy also covers `SELECT`, which meant two permissive
   policies were being evaluated on every read — the performance advisor flagged it on
   every table
-- `refund_api_calls()` is implemented alongside `reserve_api_calls()`, clamped at zero
+- `refund_api_call(call_id)` is implemented alongside `reserve_api_calls()`, clamped at
+  zero and idempotent (migration 18 replaced the original `refund_api_calls(...)` — see §4)
 - Counter rollup triggers exist on `scan_queries` and `businesses`, so the live scan screen
   can subscribe to one `scans` row
 - Foreign-key indexes added throughout; the advisor's `unused_index` notices are expected
@@ -1159,8 +1204,15 @@ other function in the schema.
 
 ### Still to do before the engine can run
 
-- Seed `tenants`, a `regions` row for the Blue Mountains, 16 `trades`, 18 geocoded
-  `suburbs`, and `api_budgets` at `free_allowance = 1000`, `allow_paid = false`
-- Enable `pgmq` and `pg_cron`, create the queues
-- The demo tenant and its `auth.users` row
-- Keepalive ping — the existing paused project in this org is proof the trap is real
+All done as of 13 Aug 2026 — the engine has been running since 11 Aug. Kept here as the
+record of what the list was:
+
+- ~~Seed `tenants`, a `regions` row for the Blue Mountains, 16 `trades`, 18 geocoded
+  `suburbs`, and `api_budgets` at `free_allowance = 1000`, `allow_paid = false`~~ — done
+- ~~Enable `pgmq` and `pg_cron`, create the queues~~ — done, migration 13
+- ~~The demo tenant and its `auth.users` row~~ — done, both tenants live
+- ~~Keepalive ping~~ — GitHub Actions workflow committed 13 Aug. **UptimeRobot monitor
+  still to be created by hand** and is the primary; see §12
+
+The spend-gate verification above was re-run against migration 18's signature on
+13 Aug 2026 and still holds, plus refund idempotency and a `p_n = 0` rejection.

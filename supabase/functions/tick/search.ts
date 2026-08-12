@@ -2,7 +2,7 @@
 
 import type { Sql } from './db.ts';
 import { archiveMessage, readQueue, releaseMessage } from './queue.ts';
-import { reserve, refund, logCall } from './spend.ts';
+import { reserve, refund, recordStatus } from './spend.ts';
 import { isTradeBusiness, pool, trueTrade, norm, websiteKind, type Place } from './lib.ts';
 import type { ActiveScan } from './state.ts';
 
@@ -31,8 +31,8 @@ async function textSearchGated(
   | { ok: true; httpStatus: number; places: Place[] }
   | { ok: false; httpStatus: number; quotaHit: boolean; bodySnippet: string }
 > {
-  const grant = await reserve(sql, tenant, 'places_text_search', 'enterprise', 1);
-  if (grant === 'denied' || grant === 'no_budget') return { blocked: true };
+  const r = await reserve(sql, tenant, 'places_text_search', 'enterprise', scanId, 1);
+  if (r.grant === 'denied' || r.grant === 'no_budget') return { blocked: true };
 
   const body: Record<string, unknown> = {
     textQuery: `${tradeName} in ${suburbName} NSW`, maxResultCount: 20, regionCode: 'AU',
@@ -50,12 +50,13 @@ async function textSearchGated(
     body: JSON.stringify(body),
   });
 
-  await logCall(sql, { tenant, scanId, api: 'places_text_search', sku: 'enterprise', grantKind: grant, httpStatus: res.status });
+  await recordStatus(sql, r.callId, res.status);
 
   // Google doesn't recognise the type name — fall back to an untyped search rather than
-  // losing the query. Refund this reservation first; the retry makes its own.
+  // losing the query. Refund this reservation first; the retry makes its own. The refunded
+  // row stays on the ledger with its 400 for the audit trail, it just stops counting.
   if (res.status === 400 && googleType && useType) {
-    await refund(sql, tenant, 'places_text_search', 'enterprise', 1, grant);
+    await refund(sql, r.callId);
     return textSearchGated(sql, tenant, scanId, tradeName, googleType, suburbName, false);
   }
   if (!res.ok) {
