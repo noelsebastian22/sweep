@@ -11,6 +11,51 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-13 · claude-code · weekend 2 and 3 gaps closed
+
+**Did**
+- Migration 18 (`20260812214957_18_reserve_logs_atomically`): `reserve_api_calls()` gains `p_scan`, returns `(grant_kind, call_id)`, inserts its own `api_calls` row in the same transaction. `api_calls` gains `units`/`refunded_at`. `refund_api_calls(...)` dropped, replaced by idempotent `refund_api_call(call_id)`.
+- `tick/spend.ts` rewritten (`Reservation` discriminated union, `refund`, `recordStatus`); `search.ts` + `psi.ts` rewired to it. `tick` redeployed twice.
+- `advance.ts`: final scan status reads `completed_queries`, not `businesses_found`.
+- `index.ts`: tick response carries `reason` (`locked` / `no_active_scan` / null).
+- `src/app/app.spec.ts`: replaced the scaffold's `Hello, sweep` assertion with a router-outlet test. `npm test` 21/22 → 22/22.
+- `.github/workflows/keepalive.yml` added — 6-hourly ping of the public `health` function.
+- `docs/specs/0003-*/verify.md`: 6 new ticked steps + a "the budget drift was misdiagnosed" correction table. `docs/specs/0004-*/verify.md` rewritten with all 25 steps ticked, 3 findings, 2 harness traps. Spec 0004 → `Accepted`.
+- `AGENTS.md` current-state + migration count (14→18) + hard rule 1 unstaled. `BUILD-PLAN.md` §4 revision block, §12 keepalive, §14 rows for weekends 2 and 3, "still to do before the engine can run" struck through.
+- Verified live: AC-7 both halves, AC-12 forced (two concurrent `net.http_post`), AC-1 demo rejection, and weekend 3 AC-1..AC-13 across both tenants.
+
+**Decided**
+- **The reservation owns its log line.** Noel approved changing the §4 function. Callers now fill in `http_status` with a plain `UPDATE` that deliberately cannot create a row — if it never runs, the reservation still stands. Invariant: `api_budgets.used = sum(api_calls.units) where refunded_at is null`.
+- **Orphaned reservations are repaired by adding ledger rows, never by lowering `used`.** An orphan may correspond to a call that really went out; under-reporting spend is the one direction §4 must never fail in.
+- **Scan status describes whether the scan did its work, not what it found.** `completed_queries = 0` means failed; `businesses_found` counts only new discoveries and made every 100%-overlap rescan look failed.
+- **Keepalive is UptimeRobot primary, GitHub Actions backup.** Actions disables scheduled workflows after 60 days of repo inactivity — exactly when a quiet portfolio project needs the ping. UptimeRobot does not decay and its free tier costs nothing.
+
+**Didn't work**
+- **The previous entry's budget-drift diagnosis was wrong.** It described one drift caused by `drainSearch`/`drainPsi`'s soft deadline. Measuring first showed two things: `places_text_search` −24 was *correct* (24 `400`s reserved then refunded; Google does not bill invalid-argument 400s, so `used` matched billed calls exactly), and only psi's +20 was real — no refund path, and `logCall` ran after `runPsi`, a window up to ~35s. **Tightening `BUDGET_MS`, the fix the entry proposed, would not have touched it.** Measure before fixing.
+- **Do not close the drawer with `history.replaceState()`.** It desyncs Angular's router; afterwards `isDemo()` reads stale and the palette offers Set-status actions on the demo tenant. This looked exactly like a real AC-9 violation and was reported as a defect before being traced to the harness. Close the drawer through the UI.
+- **`Cmd+K` needs the page to hold focus.** After a programmatic `navigate`, focus sits outside the document and the shortcut silently does nothing — it is not broken.
+- **An RLS `USING` failure is 0 rows, not an error.** First demo-write test "passed" against an empty table and then read `accepted` against a real row; both were meaningless. `UPDATE` filtered by `USING` raises nothing. Always assert on rows-affected plus a positive control on the real tenant.
+- `set local role authenticated` inside a `DO` block cannot then write to a temp table (permission denied), and a PL/pgSQL exception block silently rolls the role back. Capture the outcome into a variable, `reset role`, *then* log.
+- `raise notice` output does not come back through the Supabase MCP. Insert assertions into a temp table and `select` it.
+- `npm test` is `ng test`, which watches and never exits — use `npx ng test --watch=false`.
+- Palette quick filters *merge* into the active filter set. Running them back to back gives `0 of 64` and looks broken; clear between them.
+- Foreground `sleep` is blocked in this harness; use `run_in_background` or poll.
+
+**Open**
+- **Noel to do:** create the UptimeRobot monitor on `https://ifwyufrepqkzsicjinfi.supabase.co/functions/v1/health`, and enable leaked password protection at `/auth/providers` (the last advisor warning).
+- **Password**: Noel supplied `noel1234` in chat this session and put it in `.env` (correctly gitignored, never staged). It is weak, almost certainly in HaveIBeenPwned, and will likely be rejected once leaked-password protection is on. Recommend rotating. Do not re-record it here.
+- **`ng build` warns**: initial bundle 524.69 kB vs a 500 kB budget. Routes are already lazy; 506 kB is framework + supabase-js needed at bootstrap, 125 kB gzipped. Left for Noel to either raise `maximumWarning` in `angular.json` or do bundle work — deliberately not silently re-baselined.
+- Demo read-only-ness is invisible until you try: the disabled `select` has `opacity: 1`/`cursor: default`, and the DB refuses silently. **Client code must never infer success from the absence of an error on a demo write.**
+- Sign out clears the header but leaves the grid rendered until the next navigation; the guard only runs on route change.
+- `/check` and `/test` are referenced by `/develop`, `/architect`, both `verify.md` files and `scope.md`, but are **not installed** in `.claude/skills/` (only architect, audit, develop, impeccable, session-handoff). Verification this session was manual. Install them or stop referencing them.
+- Test scan `fc8ec3b6-7ade-4a8d-9692-466ca6c53978` (2-query Joinery rescan) left in Noel's scan history — real data, 23 businesses refreshed. Delete if it clutters weekend 4's screen.
+- AC-1's 5000-row fetch bound never exercised (450 leads is well under it).
+
+**Next**
+Weekend 4 — the live scan screen. Realtime subscription on the one `scans` row (migration 08's rollup triggers exist for exactly this), progress rail, streaming log, radar sweep, and the `awaiting_approval` state. Note before drawing that state: a parked scan resumes on the **second** tick after approval, not the first, because the queue messages stay invisible for the remainder of their 120s `READ_VT`.
+
+**Touched** — `supabase/migrations/20260812214957_18_reserve_logs_atomically.sql`, `supabase/functions/tick/{spend.ts,search.ts,psi.ts,advance.ts,index.ts}`, `src/app/app.spec.ts`, `.github/workflows/keepalive.yml`, `AGENTS.md`, `BUILD-PLAN.md`, `docs/scope/scope.md`, `docs/specs/0003-weekend-2-engine-spend-gate/verify.md`, `docs/specs/0004-weekend-3-leads-grid/{index.md,verify.md}`
+
 ## 2026-08-12 · claude-code · weekend 3 leads grid built and proven live
 
 **Did**
