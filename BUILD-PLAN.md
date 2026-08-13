@@ -1165,6 +1165,19 @@ Updated as work lands. Weekend numbers refer to §10.
 | 3 — Leads grid | **Done and verified, 13 Aug 2026** | Migration 17 applied (seeds default `scoring_profiles`). `score.ts`, `leads.store.ts`, hairline table + heat cell + CDK virtual scroll, filters, `j`/`k`/`enter` nav, inline drawer, ⌘K palette (`@angular/cdk` + `@angular/aria` added). Full AC-1..AC-13 pass on 13 Aug across both tenants, including the status write against the real 450-lead tenant. Structural claims measured in the DOM, not eyeballed: 0 network calls across all 9 column sorts, row height 43.99px, `tabular-nums`, 19-of-64 virtual rendering. `npm test` now 22/22 — it was 21/22, the Angular scaffold's `app.spec.ts` had been red since the real template landed and nobody was reading it. `ng build` succeeds with one bundle-budget warning (524.69 kB vs 500 kB) — open, see `verify.md`. See `docs/specs/0004-weekend-3-leads-grid/verify.md` |
 | 4–7 | Not started | |
 
+**Bundle budget, resolved 13 Aug 2026.** Weekend 3 left `ng build` warning at 524.69 kB
+against a 500 kB budget. Measured rather than re-baselined: `@supabase/supabase-js`
+accounted for ~42% of `main`, and most of that was code Sweep never runs — storage-js
+(hard rule 4 means this app never uploads a file), iceberg-js, functions-js, and
+realtime-js with its phoenix socket. The umbrella package constructs all of them in its
+constructor, so nothing tree-shakes and no option disables them. Replaced it with a client
+composed from `@supabase/auth-js` + `@supabase/postgrest-js` and ~10 lines of token
+plumbing in `core/supabase.service.ts`. `main` 506.49 → 407.46 kB raw, 125.25 → 102.89 kB
+transfer; initial total 524.69 → 425.65 kB. Budget left at 500 kB and now met with 74 kB
+of headroom. Verified live against the real 450-lead tenant: the publishable key alone
+returns 0 rows and 0 rows affected, the session JWT returns 450 rows and 1 row affected —
+the distinction matters because an RLS failure is 0 rows, not an error.
+
 ### What exists in Supabase now
 
 Project ref `ifwyufrepqkzsicjinfi`, region `ap-southeast-2`, Postgres 17.

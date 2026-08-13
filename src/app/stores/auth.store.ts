@@ -1,7 +1,7 @@
 import { computed } from '@angular/core';
 import { signalStore, withState, withComputed, withMethods, withHooks, patchState } from '@ngrx/signals';
-import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../core/supabase.service';
+import { Session, User } from '@supabase/auth-js';
+import { auth, db } from '../core/supabase.service';
 
 interface AuthState {
   session: Session | null;
@@ -26,7 +26,7 @@ export const AuthStore = signalStore(
 
     return {
       async init() {
-        const { data } = await supabase.auth.getSession();
+        const { data } = await auth.getSession();
         if (data.session) {
           const p = await loadProfile(data.session.user.id);
           patchState(store, { session: data.session, user: data.session.user, tenantId: p?.tenant_id ?? null, isDemo: p?.isDemo ?? false, loading: false });
@@ -35,7 +35,7 @@ export const AuthStore = signalStore(
         }
         readyResolve?.();
 
-        supabase.auth.onAuthStateChange(async (event, session) => {
+        auth.onAuthStateChange(async (event, session) => {
           if (event === 'SIGNED_IN' && session) {
             const p = await loadProfile(session.user.id);
             patchState(store, { session, user: session.user, tenantId: p?.tenant_id ?? null, isDemo: p?.isDemo ?? false, loading: false });
@@ -50,12 +50,12 @@ export const AuthStore = signalStore(
       },
 
       async signIn(email: string, password: string): Promise<string | null> {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await auth.signInWithPassword({ email, password });
         return error?.message ?? null;
       },
 
       async signOut() {
-        await supabase.auth.signOut();
+        await auth.signOut();
       },
     };
   }),
@@ -67,7 +67,7 @@ export const AuthStore = signalStore(
 );
 
 async function loadProfile(userId: string) {
-  const { data } = await supabase
+  const { data } = await db
     .from('profiles')
     .select('tenant_id, tenants(is_demo)')
     .eq('id', userId)

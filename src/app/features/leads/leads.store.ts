@@ -1,6 +1,6 @@
 import { computed } from '@angular/core';
 import { signalStore, withState, withComputed, withMethods, patchState } from '@ngrx/signals';
-import { supabase } from '../../core/supabase.service';
+import { db } from '../../core/supabase.service';
 import {
   ScoringWeights,
   WebsiteKind,
@@ -225,8 +225,8 @@ export const LeadsStore = signalStore(
     async load() {
       patchState(store, { loading: true, error: null });
       const [leadsRes, weightsRes] = await Promise.all([
-        supabase.from('lead_rows').select('*').limit(5000),
-        supabase.from('scoring_profiles').select('weights').eq('is_default', true).limit(1).maybeSingle(),
+        db.from('lead_rows').select('*').limit(5000),
+        db.from('scoring_profiles').select('weights').eq('is_default', true).limit(1).maybeSingle(),
       ]);
       if (leadsRes.error) {
         patchState(store, { loading: false, loaded: true, error: leadsRes.error.message });
@@ -283,7 +283,7 @@ export const LeadsStore = signalStore(
      * tenant is blocked at the RLS layer; callers must check AuthStore.isDemo() first and
      * disable the control rather than relying on this silently no-opping. */
     async updateStatus(leadId: string, status: LeadStatus): Promise<{ ok: boolean; error?: string }> {
-      const { data, error } = await supabase.from('leads').update({ status }).eq('id', leadId).select('id');
+      const { data, error } = await db.from('leads').update({ status }).eq('id', leadId).select('id');
       if (error) return { ok: false, error: error.message };
       if (!data || data.length === 0) return { ok: false, error: 'No row updated (read only in the demo, or the lead no longer exists).' };
       patchState(store, (s) => ({

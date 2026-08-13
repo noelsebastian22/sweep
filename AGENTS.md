@@ -74,6 +74,18 @@ Schema is fully applied — 16 tables, RLS on all of them, plus the `lead_rows` 
   `current_tenant_is_demo()` are executable by `authenticated`, because RLS policies are
   evaluated with the invoker's privileges. Do not "fix" these by revoking — it breaks
   every policy in the schema
+- **The browser client is composed, not the umbrella package.** `@supabase/supabase-js` is
+  deliberately *not* a dependency. `core/supabase.service.ts` builds the client from
+  `@supabase/auth-js` + `@supabase/postgrest-js` and exports `auth` and `db`; import those,
+  never a `supabase` object. The umbrella package constructs storage, realtime and iceberg
+  clients in its constructor, so none of them tree-shake — it put ~98 kB of never-executed
+  code in the initial bundle. Two details in that file are load-bearing and must not drift:
+  the localStorage `storageKey` has to stay `sb-<project-ref>-auth-token` (change its shape
+  and every signed-in browser silently signs out, with no error), and the `Authorization`
+  bearer must fall back to the publishable key when there is no session. **When a screen
+  needs realtime, `import('@supabase/realtime-js')` dynamically inside that route** so it
+  lands in the route's chunk, and call `setAuth()` on it from `onAuthStateChange` — that
+  last bit is wiring the umbrella package used to do for you
 - **The `tick` cron job authenticates via a Vault secret, not a committed value.** It reads
   the service role key back with `select decrypted_secret from vault.decrypted_secrets
   where name = 'service_role_key'` (migration 16). That secret is created once, by hand,

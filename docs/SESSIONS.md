@@ -11,6 +11,44 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-13 · claude-code · bundle cut, weekend 4 started
+
+**Did**
+- `core/supabase.service.ts` rewritten: client composed from `@supabase/auth-js` + `@supabase/postgrest-js`, exports `auth` and `db`. `@supabase/supabase-js` removed from `package.json`; the two sub-packages pinned exact at `2.112.2`.
+- `auth.store.ts` (`supabase.auth.` → `auth.`, `Session`/`User` now from `@supabase/auth-js`) and `leads.store.ts` (`supabase.from` → `db.from`) rewired.
+- `main` 506.49 → 407.46 kB raw, 125.25 → 102.89 kB transfer; initial total 524.69 → 425.65 kB. `ng build` warning gone, budget left at 500 kB. `realtime-js`, `phoenix`, `storage-js`, `iceberg-js`, `functions-js` confirmed absent from `stats.json`.
+- `npx ng test --watch=false` 22/22.
+- `AGENTS.md` Supabase section: new bullet on the composed client. `BUILD-PLAN.md` §14: bundle-budget resolution block under the status table.
+- Diagnosed the UptimeRobot "down" email: not a real incident. Started the weekend 4 architect interview (no spec file written).
+
+**Decided**
+- **The browser client is composed, not the umbrella package.** The umbrella builds storage/realtime/iceberg clients in its constructor so nothing tree-shakes, and its `exports` map offers no slim build (only `.`, `./cors`, `./tracing`). ~108 kB of `main` was code Sweep never runs. Note ~17 kB of `auth-js` is WebAuthn + Web3 login paths and a 9.5 kB `GoTrueAdminApi`, all statically reachable from `GoTrueClient` and therefore unremovable.
+- **Two lines in `supabase.service.ts` are load-bearing.** `storageKey` must stay `sb-<project-ref>-auth-token` (wrong shape = every signed-in browser silently signs out, no error), and the `Authorization` bearer must fall back to the publishable key with no session (PostgREST rejects a missing bearer outright).
+- **Weekend 4 must `import('@supabase/realtime-js')` dynamically inside the scan route** and call `setAuth()` from `onAuthStateChange` — wiring the umbrella used to do. Keeps realtime out of `main`.
+- Weekend 4 Stage (a) answers, from Noel: dashboard card as entry point (no `/scans` list yet); one screen that settles into a terminal summary for completed/partial/failed; log carries discoveries + failed queries + stage/spend events; `spend_grants` gets wired into `reserve_api_calls()` properly rather than bumping `api_budgets`.
+
+**Didn't work**
+- **Lazy-loading the umbrella client via dynamic `import()` was considered and rejected.** It moves ~214 kB out of the initial chunk but changes total bytes downloaded by zero, and auth is on the critical path for every route, so time-to-interactive barely moves. It satisfies the budget metric without fixing the problem. Do not "fix" a future budget warning this way.
+- **Coordinate-based clicks in the leads grid landed on the column header twice**, re-sorting instead of opening the drawer — the same stale-coordinate trap as 12 Aug. Verified the write path with a same-value `PATCH` through `javascript_tool` instead: it is a real RLS-governed UPDATE with zero net data change, only `leads_touch_updated_at` fires.
+- **Background `ng serve` reported exit 127 twice with empty output.** Misleading: the real cause was port 4200 already in use by Noel's own dev server. Check the port before believing the exit code.
+- Supabase MCP `execute_sql` takes `query`, not `sql`.
+
+**Open**
+- **Sign-out → sign-in round trip is untested.** I do not type passwords into forms. Everything around it is proven (auth URL, headers, `storageKey`, session restore, `getSession`), but the literal password grant is unexercised. If it fails, look at the `AuthClient` config in `core/supabase.service.ts`.
+- **`supabase_realtime` publication contains zero tables.** Realtime subscriptions will connect and deliver nothing until a migration adds `scans` and `businesses`. Weekend 4 blocker; looks exactly like a client bug.
+- **`reserve_api_calls()` never reads `spend_grants`.** The table exists with `calls`/`amount_usd`/`approved_by` but the gate only reads `api_budgets`. No wired path makes an approval unblock a scan. Weekend 4 owns fixing this (§4 change).
+- **`awaiting_approval` does not actually park.** `pickActiveScan` includes it and `tick/index.ts:38` flips it back to `searching`/`measuring` next tick, so it loops park → resume → denied → park once a minute. The UI must say "blocked, retrying", not "waiting for you".
+- **`authenticated` can write `api_budgets` and `spend_grants` directly** — the browser can raise its own paid allowance. Decide this deliberately in weekend 4.
+- `docs/scope/scope.md` has **no weekend 4 row**, and its "At a glance" table still says weekend 3 is `in-progress` while the body heading says `done`.
+- Weekend 1 AC-4 (UptimeRobot) is **now genuinely satisfied** — monitor live, checks landing every ~6 min, confirmed in `function_edge_logs`. `scope.md` still shows it unticked.
+- UptimeRobot emails were `TEST:`-prefixed notifications 2 seconds apart, fired by the "send test notification" button; the dashboard correctly shows no incidents. Not a bug. Health has returned unbroken 200s.
+- Still open from before: leaked password protection at `/auth/providers`; `noel1234` is weak and will likely be rejected once it is on. Sign out still leaves the grid rendered until the next navigation. `/check` and `/test` remain uninstalled.
+
+**Next**
+Resume the weekend 4 architect interview from Stage (b). The four Stage (a) answers above are already settled; still to walk are the data model (realtime publication migration, `spend_grants` wiring), realtime mechanics (dynamic `realtime-js` import, `setAuth` on token change, reconnect/missed-event handling), page composition for the three regions, API surface, authz, and edge cases. Spec goes to `docs/specs/0005-weekend-4-live-scan/` as a directory spec (`index.md` + `rationale.md` + `verify.md`), matching 0003 and 0004.
+
+**Touched** — `src/app/core/supabase.service.ts`, `src/app/stores/auth.store.ts`, `src/app/features/leads/leads.store.ts`, `package.json`, `package-lock.json`, `AGENTS.md`, `BUILD-PLAN.md`
+
 ## 2026-08-13 · claude-code · weekend 2 and 3 gaps closed
 
 **Did**
