@@ -4,6 +4,7 @@ import type { Sql } from './db.ts';
 import { archiveMessage, readQueue, releaseMessage } from './queue.ts';
 import { reserve, refund, recordStatus } from './spend.ts';
 import { isTradeBusiness, pool, trueTrade, norm, websiteKind, type Place } from './lib.ts';
+import { logEvent } from './events.ts';
 import type { ActiveScan } from './state.ts';
 
 const CONCURRENCY = 5;
@@ -66,11 +67,15 @@ async function textSearchGated(
   return { ok: true, httpStatus: res.status, places: json.places || [] };
 }
 
+// Returns true when this was a genuinely new business rather than a rediscovery, so the
+// log can say "12 found, 3 new" — the number that actually tells you whether a rescan was
+// worth running. `xmax = 0` is the standard way to tell an INSERT from a DO UPDATE in one
+// round trip; a real update leaves the deleting transaction id on the row.
 async function upsertBusiness(sql: Sql, args: {
   tenantId: string; scanId: string; tradeId: string; suburbId: string; place: Place;
-}): Promise<void> {
+}): Promise<boolean> {
   const { tenantId, scanId, tradeId, suburbId, place: p } = args;
-  await sql`
+  const [row] = await sql`
     insert into businesses (
       tenant_id, google_place_id, name, name_norm, trade_id, suburb_id, phone,
       website_url, website_kind, address, rating, rating_count, primary_type, types,
@@ -100,7 +105,9 @@ async function upsertBusiness(sql: Sql, args: {
       last_seen_at = excluded.last_seen_at
     -- first_seen_scan_id is deliberately absent from this SET list: omitting it is what
     -- preserves it on conflict while still setting it correctly on a fresh insert.
+    returning (xmax = 0) as inserted
   `;
+  return row?.inserted === true;
 }
 
 export async function drainSearch(sql: Sql, scan: ActiveScan, deadline: number): Promise<void> {
@@ -131,8 +138,23 @@ export async function drainSearch(sql: Sql, scan: ActiveScan, deadline: number):
       const result = await textSearchGated(sql, payload.tenant_id, scan.id, payload.trade_name, payload.google_type, payload.suburb_name);
 
       if ('blocked' in result) {
-        await sql`update scans set status = 'awaiting_approval' where id = ${scan.id}`;
+        // Claim the park before awaiting anything. Every worker in the pool is in flight
+        // at once, so they all reach this branch on the same denial; reading and setting
+        // the flag in one synchronous step means exactly one of them owns the log line.
+        // Without it the screen showed the pause message CONCURRENCY times over.
+        const firstToPark = !parked;
         parked = true;
+
+        await sql`update scans set status = 'awaiting_approval' where id = ${scan.id}`;
+
+        // Logged once, at the moment of denial — not on every tick that finds the scan
+        // still parked. This single line is what the screen shows to explain why nothing
+        // is moving, so it has to name the budget that ran out.
+        if (firstToPark) {
+          await logEvent(sql, scan.id, payload.tenant_id, 'spend',
+            'Paused — the Places search allowance is exhausted. Approve more calls to resume.',
+            { api: 'places_text_search', sku: 'enterprise', stage: 'searching' });
+        }
         return;
       }
 
@@ -141,21 +163,38 @@ export async function drainSearch(sql: Sql, scan: ActiveScan, deadline: number):
           error = ${result.bodySnippet}, completed_at = now() where id = ${payload.query_id}`;
         if (result.quotaHit) await sql`update scans set quota_hit = true where id = ${scan.id}`;
         await archiveMessage(sql, 'sweep_search', m.msg_id);
+        await logEvent(sql, scan.id, payload.tenant_id, 'error',
+          `${payload.trade_name} · ${payload.suburb_name} — failed (HTTP ${result.httpStatus})`,
+          { trade: payload.trade_name, suburb: payload.suburb_name,
+            http_status: result.httpStatus, error: result.bodySnippet, quota_hit: result.quotaHit });
         return;
       }
 
       let kept = 0;
+      let fresh = 0;
+      const freshNames: string[] = [];
       for (const p of result.places) {
         if (!isTradeBusiness(p)) continue;
         kept++;
         const finalTradeName = trueTrade(p, payload.trade_name);
         const tradeId = tradesByName.get(finalTradeName) ?? payload.trade_id;
-        await upsertBusiness(sql, { tenantId: payload.tenant_id, scanId: scan.id, tradeId, suburbId: payload.suburb_id, place: p });
+        const isNew = await upsertBusiness(sql, { tenantId: payload.tenant_id, scanId: scan.id, tradeId, suburbId: payload.suburb_id, place: p });
+        if (isNew) {
+          fresh++;
+          // Capped: the detail column feeds a log line, not an export, and a 20-result
+          // query would otherwise put 20 names into every row.
+          if (freshNames.length < 5) freshNames.push(p.displayName?.text ?? p.id);
+        }
       }
 
       await sql`update scan_queries set status = 'done', http_status = ${result.httpStatus},
         results_count = ${kept}, completed_at = now() where id = ${payload.query_id}`;
       await archiveMessage(sql, 'sweep_search', m.msg_id);
+
+      await logEvent(sql, scan.id, payload.tenant_id, fresh > 0 ? 'discovery' : 'query',
+        `${payload.trade_name} · ${payload.suburb_name} — ${kept} found, ${fresh} new`,
+        { trade: payload.trade_name, suburb: payload.suburb_name,
+          kept, fresh, examples: freshNames, returned: result.places.length });
     });
 
     if (parked) break;

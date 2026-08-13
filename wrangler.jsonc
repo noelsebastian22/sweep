@@ -1,0 +1,26 @@
+{
+  // Cloudflare Workers with static assets — not Pages. See BUILD-PLAN.md §6.
+  //
+  // There is no `main` entry on purpose: Sweep's server side is Supabase, so this Worker
+  // serves the built Angular bundle and nothing else. Adding a script here would be the
+  // "second backend service" the stack rules rule out.
+  //
+  // Deploy with `npx wrangler deploy` after `npm run build`. The first deploy needs
+  // `npx wrangler login` (browser OAuth against your Cloudflare account).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sweep",
+  "compatibility_date": "2026-08-13",
+
+  "assets": {
+    "directory": "./dist/sweep/browser",
+
+    // Angular is a client-routed SPA: /leads and /scans/<uuid> are real routes to the app
+    // but not real files on disk. Without this, a hard refresh or a pasted link to any
+    // route other than / returns a 404 from the edge before Angular ever loads.
+    "not_found_handling": "single-page-application"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

@@ -17,6 +17,15 @@ export const routes: Routes = [
     children: [
       { path: '', loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.Dashboard) },
       { path: 'leads', loadComponent: () => import('./features/leads/leads-grid/leads-grid').then((m) => m.LeadsGrid) },
+
+      // `new` must be declared before `:id`, or the builder route is swallowed as a scan
+      // whose id is the literal string "new".
+      { path: 'scans/new', loadComponent: () => import('./features/scans/scan-builder/scan-builder').then((m) => m.ScanBuilder) },
+
+      // Realtime lives behind this lazy boundary. `@supabase/realtime-js` is imported
+      // dynamically inside features/scans/realtime.ts so it lands in this route's chunk
+      // and never in `main` — see AGENTS.md on the composed Supabase client.
+      { path: 'scans/:id', loadComponent: () => import('./features/scans/live-scan/live-scan').then((m) => m.LiveScan) },
     ],
   },
 ];

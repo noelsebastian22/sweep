@@ -14,6 +14,10 @@ export interface ActiveScan {
 // AC-2: the oldest scan whose status is queued, searching, measuring, or
 // awaiting_approval, across all tenants. awaiting_approval is included deliberately —
 // that's what lets a parked scan resume on its own, with no separate un-park mechanism.
+//
+// It is picked, but since migration 20 it is not automatically un-parked: index.ts checks
+// budget_headroom() first and leaves it parked when a grant has not actually created room.
+// 'cancelled' is terminal and is never picked.
 export async function pickActiveScan(sql: Sql): Promise<ActiveScan | null> {
   const [scan] = await sql`
     select id, tenant_id, status from scans

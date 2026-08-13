@@ -9,6 +9,7 @@ import type { Sql } from './db.ts';
 import { archiveMessage, readQueue, releaseMessage } from './queue.ts';
 import { reserve, recordStatus } from './spend.ts';
 import { pool, sleep } from './lib.ts';
+import { logEvent } from './events.ts';
 import type { ActiveScan } from './state.ts';
 
 const CONCURRENCY = 4;
@@ -99,8 +100,18 @@ export async function drainPsi(sql: Sql, scan: ActiveScan, deadline: number): Pr
 
       const r = await reserve(sql, payload.tenant_id, 'psi', 'free', scan.id, 1);
       if (r.grant === 'denied' || r.grant === 'no_budget') {
-        await sql`update scans set status = 'awaiting_approval' where id = ${scan.id}`;
+        // Claim the park synchronously, before any await — see the same guard in
+        // search.ts. Every worker in the pool hits the denial together, and without this
+        // each one writes its own copy of the pause message.
+        const firstToPark = !parked;
         parked = true;
+
+        await sql`update scans set status = 'awaiting_approval' where id = ${scan.id}`;
+        if (firstToPark) {
+          await logEvent(sql, scan.id, payload.tenant_id, 'spend',
+            'Paused — the PageSpeed allowance is exhausted. Approve more calls to resume.',
+            { api: 'psi', sku: 'free', stage: 'measuring' });
+        }
         return;
       }
 
@@ -121,6 +132,21 @@ export async function drainPsi(sql: Sql, scan: ActiveScan, deadline: number): Pr
       }
 
       await archiveMessage(sql, 'sweep_psi', m.msg_id);
+
+      // Host rather than the full URL: the log is a narrow column and the path adds
+      // nothing. A site that fails to resolve is worth a line too — an unmeasurable site
+      // is itself a signal about the lead, not noise to hide.
+      let host = payload.website_url;
+      try { host = new URL(payload.website_url).hostname.replace(/^www\./, ''); } catch { /* keep raw */ }
+
+      await logEvent(sql, scan.id, payload.tenant_id,
+        outcome.score == null ? 'error' : 'query',
+        outcome.score == null
+          ? `${host} — no PageSpeed score (${outcome.error ?? 'unknown'})`
+          : `${host} — PageSpeed ${outcome.score}`,
+        { business_id: payload.business_id, url: payload.website_url, score: outcome.score,
+          lcp_ms: outcome.lcpMs, cls: outcome.cls, http_status: outcome.httpStatus,
+          error: outcome.error });
     });
 
     if (parked) break;

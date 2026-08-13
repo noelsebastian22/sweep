@@ -1,4 +1,5 @@
-import { computed } from '@angular/core';
+import { computed, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { signalStore, withState, withComputed, withMethods, withHooks, patchState } from '@ngrx/signals';
 import { Session, User } from '@supabase/auth-js';
 import { auth, db } from '../core/supabase.service';
@@ -21,6 +22,7 @@ export const AuthStore = signalStore(
     email: computed(() => user()?.email ?? null),
   })),
   withMethods((store) => {
+    const router = inject(Router);
     let readyResolve: (() => void) | null = null;
     const readyPromise = new Promise<void>((resolve) => { readyResolve = resolve; });
 
@@ -41,6 +43,11 @@ export const AuthStore = signalStore(
             patchState(store, { session, user: session.user, tenantId: p?.tenant_id ?? null, isDemo: p?.isDemo ?? false, loading: false });
           } else if (event === 'SIGNED_OUT') {
             patchState(store, { session: null, user: null, tenantId: null, isDemo: false, loading: false });
+            // Navigate here rather than at the Sign out button. Clearing the state alone
+            // left the previous screen — the leads grid, with real business names and
+            // phone numbers — rendered until the user happened to navigate. This path also
+            // covers a session expiring on its own, which no button click would catch.
+            void router.navigate(['/login']);
           }
         });
       },

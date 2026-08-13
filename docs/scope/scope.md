@@ -5,9 +5,10 @@
 | Feature | Status | Spec |
 |---|---|---|
 | Weekend 0: Style tile | done | [0001](../specs/0001-angular-scaffold-style-tile.md) |
-| Weekend 1: Angular foundations | done except keepalive | [0002](../specs/0002-weekend-1-angular-foundations.md) |
+| Weekend 1: Angular foundations | done | [0002](../specs/0002-weekend-1-angular-foundations.md) |
 | Weekend 2: Engine and spend gate | done | [0003](../specs/0003-weekend-2-engine-spend-gate/index.md) |
-| Weekend 3: Leads grid | in-progress | [0004](../specs/0004-weekend-3-leads-grid/index.md) |
+| Weekend 3: Leads grid | done | [0004](../specs/0004-weekend-3-leads-grid/index.md) |
+| Weekend 4: Live scan | done | built without a spec file — see 13 Aug session log |
 
 ---
 
@@ -24,14 +25,14 @@ Angular scaffold (v20 at the time, upgraded to v22 on 11 Aug) and a style tile r
   - [x] Verify build, contrast, keyboard, screenshots · satisfies AC-8
 - [x] Verify it: `ng build` clean, contrast ratios checked against BUILD-PLAN.md §7 (see 10 Aug session log), re-verified visually 11 Aug on Angular 22
 
-### Weekend 1: Angular foundations · done except keepalive
+### Weekend 1: Angular foundations · done
 
 Seed data, queue plumbing, keepalive, and the Angular app shell with email/password auth plus a placeholder dashboard. [0002](../specs/0002-weekend-1-angular-foundations.md)
 
 - [x] Design it (spec)
 - [x] Build it: /develop weekend-1-angular-foundations
   - [x] Backend: pgmq/pg_cron/pg_net migration, health function, seed function · satisfies AC-1, AC-2, AC-3
-  - [ ] UptimeRobot keepalive monitor · satisfies AC-4 — **still open**, needs an external UptimeRobot account signup
+  - [x] UptimeRobot keepalive monitor · satisfies AC-4 — monitor live since 13 Aug, checks landing every ~6 min, confirmed in `function_edge_logs`. `.github/workflows/keepalive.yml` is the committed backup pinger
   - [x] Frontend: Supabase client, AuthStore, login, auth guard, layout shell, dashboard · satisfies AC-5, AC-6, AC-7, AC-8, AC-9, AC-10
   - [x] Verify ng build passes · satisfies AC-11
   - [x] `get_advisors` re-run after the pgmq/pg_cron/pg_net migration · satisfies AC-12 — run 11 Aug, found `pg_net` installed in the public schema, fixed in migration 14
@@ -65,3 +66,45 @@ The first real product screen: a dense, virtual scrolled table of every business
   - [x] Interaction: filter chips and ranges, keyboard nav (`j`/`k`/`enter`), inline lead drawer with status change and demo tenant disablement · satisfies AC-5, AC-6, AC-7, AC-8
   - [x] Palette and polish: global `⌘K` command palette, empty/loading/error states · satisfies AC-9, AC-10, AC-11
 - [x] Verify it: run by hand 13 Aug 2026 (`/check` is not installed in this repo) — all 22 UI steps and 3 command steps ticked across both tenants, AC-1..AC-13 covered. Two non-blocking findings and one build warning recorded in `verify.md`
+
+### Weekend 4: Live scan · done
+
+The hero screen: a scan you can watch. Realtime subscriptions to `scans` and a new
+`scan_events` log, a two-stage progress rail, a streaming activity feed, and the
+paused-for-approval state that turns a spend denial into a decision rather than a dead end.
+Also closes the four backend gaps the previous session left open, three of which had to be
+fixed before this screen could be honest about what it was showing.
+
+Built without a spec file — the four Stage (a) answers were settled in the 13 Aug architect
+interview and recorded in the session log, and the remaining decisions were made against
+live behaviour rather than up front. The reasoning lives in `BUILD-PLAN.md` §14 and the
+migration headers.
+
+**Decision**: a persisted `scan_events` table rather than subscribing to `scan_queries` and
+`businesses` directly. Realtime replays nothing, so a page opened mid-scan or reloaded would
+show a blank log, and a finished scan would have no log at all. One table also collapses
+three subscriptions into one and can carry stage transitions and spend denials, which no
+row in an existing table represents.
+
+**Decision**: grants flow through a capped `approve_spend()` function and nothing else. The
+browser lost every write policy on `api_budgets`, `spend_grants` and `api_calls` — it could
+previously set its own `allow_paid` and `granted_usd`, verified exploitable before the fix.
+
+- [x] Build it: code in `src/app/features/scans/`, `src/app/pages/dashboard/dashboard.ts`,
+      `supabase/functions/tick/events.ts`, migrations 19 and 20
+  - [x] Migration 19: `scan_events` + RLS, `cancelled` scan status, `supabase_realtime`
+        publication (it contained zero tables, so every subscription was silently inert)
+  - [x] Migration 20: revoke browser writes on the three financial tables, `approve_spend()`,
+        `budget_headroom()`, `cancel_scan()`
+  - [x] Engine: park loop fixed — `awaiting_approval` now stays parked until a grant creates
+        real headroom; `scan_events` emitted from every stage; concurrent-worker log dedup
+  - [x] Live scan screen at `/scans/:id`: realtime via dynamic `import('@supabase/realtime-js')`,
+        progress rail, activity feed, approval panel, terminal summary
+  - [x] Scan builder at `/scans/new` with a call-count preflight — `scan-create` had been
+        deployed since weekend 2 with nothing in the app calling it
+  - [x] Dashboard wired to real counts plus the active-scan entry card
+- [x] Verify it: run by hand 13 Aug 2026. Park/resume proven over six live ticks; realtime
+      proven by a server-side insert appearing without a reload; `cancel_scan` proven through
+      the UI; `approve_spend` caps proven at SQL level (demo refused, per-grant cap, month
+      ceiling). `ng build` clean at 424.98 kB initial, `realtime-js` confirmed absent from
+      `main`. Tests 22/22.

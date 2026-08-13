@@ -15,6 +15,7 @@ import { CommandPalette } from '../shared/ui/command-palette/command-palette';
         <a routerLink="/" style="font-family:'Geist Sans',sans-serif;font-size:18px;font-weight:600;color:var(--color-sw-ink);text-decoration:none;">Sweep</a>
         <nav style="display:flex;align-items:center;gap:20px;">
           <a routerLink="/leads" style="font-family:'Geist Sans',sans-serif;font-size:14px;color:var(--color-sw-ink-mid);text-decoration:none;">Leads</a>
+          <a routerLink="/scans/new" style="font-family:'Geist Sans',sans-serif;font-size:14px;color:var(--color-sw-ink-mid);text-decoration:none;">New scan</a>
         </nav>
         <div style="display:flex;align-items:center;gap:16px;">
           <span data-mono style="font-size:13px;color:var(--color-sw-ink-mid);">{{ authStore.email() }}</span>

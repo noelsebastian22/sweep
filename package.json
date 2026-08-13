@@ -31,6 +31,7 @@
     "@ngrx/signals": "22.0.0-rc.0",
     "@supabase/auth-js": "2.112.2",
     "@supabase/postgrest-js": "2.112.2",
+    "@supabase/realtime-js": "2.112.2",
     "@tailwindcss/postcss": "^4.3.3",
     "rxjs": "~7.8.0",
     "tailwindcss": "^4.3.3",

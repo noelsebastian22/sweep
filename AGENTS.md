@@ -61,19 +61,33 @@ service.
 ## Supabase
 
 Project `sweep`, ref `ifwyufrepqkzsicjinfi`, region `ap-southeast-2`, Postgres 17.
-Schema is fully applied — 16 tables, RLS on all of them, plus the `lead_rows` view.
+Schema is fully applied — 17 tables, RLS on all of them, plus the `lead_rows` view.
 
-- Schema lives in `supabase/migrations/`, 18 files, matching the remote ledger exactly.
+- Schema lives in `supabase/migrations/`, 20 files, matching the remote ledger exactly.
   **Check `list_migrations` before naming a new file** — the remote assigns the version
   timestamp, and three sessions running have had to rename local files to match it
 - **Schema changes are migrations. Never edit through the dashboard.** Both agents can
   apply migrations through the Supabase MCP
 - **Run `get_advisors` (security *and* performance) after any DDL.** It catches missing
   RLS and policy overlap that no test will. Migrations 11 and 12 exist only because it did
-- Two security warnings are known and intentional: `current_tenant()` and
+- Four security warnings are known and intentional. `current_tenant()` and
   `current_tenant_is_demo()` are executable by `authenticated`, because RLS policies are
-  evaluated with the invoker's privileges. Do not "fix" these by revoking — it breaks
-  every policy in the schema
+  evaluated with the invoker's privileges — do not "fix" these by revoking, it breaks every
+  policy in the schema. `approve_spend()` and `cancel_scan()` are `security definer` and
+  callable by `authenticated` because they *are* the user actions; both re-derive the tenant
+  from the JWT rather than taking it as a parameter, so neither can be aimed at another
+  tenant
+- **The browser cannot write `api_budgets`, `spend_grants` or `api_calls`** (migration 20).
+  It could until 13 Aug — `update api_budgets set allow_paid = true, granted_usd = 99999`
+  succeeded under the generic write policy migration 10 handed every tenant-scoped table,
+  which meant the client could raise its own paid allowance and walk straight past hard rule
+  1. All three now have read policies only. The single way `granted_usd` ever rises is
+  `approve_spend(api, sku, calls, scan, note)`, whose caps (1,000 calls and $35 per grant,
+  $50 a month) are constants in the function body precisely so that moving them needs a
+  migration. `businesses`, `psi_results`, `site_snapshots`, `trades`, `regions` and
+  `suburbs` are engine- or seed-owned and lost their write policies at the same time. The
+  only writes a user JWT still performs are `leads.update`, `lead_events.insert`,
+  `scans.insert`/`update`, `scan_queries.insert` and `scoring_profiles.*`
 - **The browser client is composed, not the umbrella package.** `@supabase/supabase-js` is
   deliberately *not* a dependency. `core/supabase.service.ts` builds the client from
   `@supabase/auth-js` + `@supabase/postgrest-js` and exports `auth` and `db`; import those,
@@ -82,10 +96,20 @@ Schema is fully applied — 16 tables, RLS on all of them, plus the `lead_rows` 
   code in the initial bundle. Two details in that file are load-bearing and must not drift:
   the localStorage `storageKey` has to stay `sb-<project-ref>-auth-token` (change its shape
   and every signed-in browser silently signs out, with no error), and the `Authorization`
-  bearer must fall back to the publishable key when there is no session. **When a screen
-  needs realtime, `import('@supabase/realtime-js')` dynamically inside that route** so it
-  lands in the route's chunk, and call `setAuth()` on it from `onAuthStateChange` — that
-  last bit is wiring the umbrella package used to do for you
+  bearer must fall back to the publishable key when there is no session
+- **Realtime is done, in `features/scans/realtime.ts`.** It dynamic-`import()`s
+  `@supabase/realtime-js` so the socket and its phoenix dependency land in the `/scans/:id`
+  route chunk (58 kB) and never in `main` — verified by grepping the built bundle, not
+  assumed. The `RealtimeClient` import at the top of that file is `import type` on purpose;
+  making it a value import silently undoes the whole bundle cut. It also calls `setAuth()`
+  from `onAuthStateChange`, which is wiring the umbrella package used to do: realtime holds
+  its own copy of the JWT, and a stale one means RLS filters out every payload while the
+  channel still reports a healthy `SUBSCRIBED`. **Realtime replays nothing** — the store
+  treats every `SUBSCRIBED` as a resync and re-reads `scan_events` after its last seen id,
+  which is why that log is a table and not just a stream
+- `supabase_realtime` publishes `scans` (with `replica identity full`) and `scan_events`.
+  It contained **zero tables** until migration 19, so any subscription before that connected
+  successfully and then delivered nothing forever — it looks exactly like a client bug
 - **The `tick` cron job authenticates via a Vault secret, not a committed value.** It reads
   the service role key back with `select decrypted_secret from vault.decrypted_secrets
   where name = 'service_role_key'` (migration 16). That secret is created once, by hand,
@@ -110,6 +134,12 @@ These are the ones that cost real money or leak real data if broken.
    `api_budgets.used = sum(api_calls.units) where refunded_at is null`
 2. **When a reservation returns `denied`, park — do not fail and do not retry.** Leave the
    queue message unarchived, set the scan to `awaiting_approval`, exit cleanly.
+   A parked scan now *stays* parked: `index.ts` checks `budget_headroom()` before leaving
+   `awaiting_approval` and only resumes once a grant has created real room. It used to flip
+   back to `searching` on every tick, so a blocked scan looped park → resume → deny → park
+   once a minute and the state never meant anything. Because tick picks strictly the oldest
+   active scan, a parked one blocks everything behind it until it is funded or
+   `cancel_scan()`-ed — that is deliberate, and it is why cancelling had to exist.
 3. **The service role key never enters the browser bundle, the repo, or a log line.** Edge
    functions only. Client code uses the publishable key.
 4. **Never store raw PageSpeed JSON.** A single response is ~600 KB against a 500 MB free
@@ -178,13 +208,17 @@ The service role key and the Google API keys are edge-function secrets, set with
 
 ## Current state
 
-Weekends 0–3 are built. Backend is done and proven against real scans: schema applied, RLS
-on, spend gate tested, `tick` + `scan-create` deployed, the engine has run 288 queries end
-to end and parks and resumes correctly when the allowance runs out. On the frontend the
-style tile, app shell, auth, dashboard and the leads grid at `/leads` all exist.
+Weekends 0–4 are built. Backend is done and proven against real scans: schema applied, RLS
+on, spend gate tested and now locked down, `tick` + `scan-create` deployed, the engine has
+run 288 queries end to end and genuinely parks and resumes when the allowance runs out. On
+the frontend the style tile, app shell, auth, dashboard, the leads grid at `/leads`, the
+scan builder at `/scans/new` and the live scan screen at `/scans/:id` all exist.
 
-Next up: weekend 4 — the live scan screen (realtime subscriptions, progress rail, the
-paused-for-approval state). Then detail, map + lab, and the landing page last.
+The app is usable end to end for the first time: pick trades and suburbs, watch the scan
+run, approve spend when it parks, triage the leads it produces.
+
+Next up: weekend 5 — lead detail as a 720px document, with the PSI breakdown and the
+screenshots already sitting in the PSI payload. Then map + lab, and the landing page last.
 
 See `BUILD-PLAN.md` §14 for detailed status, and `docs/SESSIONS.md` for what the last
 session left open.

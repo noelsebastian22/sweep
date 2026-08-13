@@ -3,6 +3,7 @@
 import type { Sql } from './db.ts';
 import { sendMessage } from './queue.ts';
 import { ceiling } from './lib.ts';
+import { logEvent } from './events.ts';
 
 // AC-4: once every scan_queries row is resolved, compute the ceiling cutoff over
 // businesses *this scan* touched (last_scan_id, not first_seen_scan_id — see spec Feature
@@ -30,19 +31,24 @@ export async function advanceAfterSearch(sql: Sql, scanId: string): Promise<void
   }
 
   await sql`update scans set psi_total = ${needPsi.length}, status = 'measuring' where id = ${scanId}`;
+
+  await logEvent(sql, scanId, scan.tenant_id, 'stage',
+    `Search complete — measuring ${needPsi.length} of ${candidates.length} sites`,
+    { candidates: candidates.length, psi_total: needPsi.length, top_n: topN, cutoff });
 }
 
 // AC-6: every business the scan discovered gets a leads row, not only the ones that got a
 // PSI check — a business with no website or a social-only page is frequently the best
 // lead. top_n bounds only the PSI cutoff (AC-4), never which businesses become leads.
 export async function advanceAfterPsi(sql: Sql, scanId: string): Promise<void> {
-  await sql`
+  const created = await sql`
     insert into leads (tenant_id, business_id)
     select tenant_id, id from businesses where last_scan_id = ${scanId}
-    on conflict (tenant_id, business_id) do nothing`;
+    on conflict (tenant_id, business_id) do nothing
+    returning id`;
 
   const [scan] = await sql`
-    select total_queries, completed_queries, failed_queries, businesses_found
+    select tenant_id, total_queries, completed_queries, failed_queries, businesses_found
       from scans where id = ${scanId}`;
 
   // Status describes whether the scan did its work, not what it found.
@@ -62,4 +68,19 @@ export async function advanceAfterPsi(sql: Sql, scanId: string): Promise<void> {
     : scan.failed_queries > 0 ? 'partial' : 'completed';
 
   await sql`update scans set status = ${status}, finished_at = now() where id = ${scanId}`;
+
+  // The terminal line. It is what the screen settles into once the scan stops moving, so
+  // it states the outcome in the same terms the status does — work done, not what was
+  // found — and then the counts underneath.
+  const headline = status === 'completed'
+    ? `Scan complete — ${scan.completed_queries} of ${scan.total_queries} queries`
+    : status === 'partial'
+      ? `Scan finished with ${scan.failed_queries} failed ${scan.failed_queries === 1 ? 'query' : 'queries'}`
+      : 'Scan failed — no queries resolved';
+
+  await logEvent(sql, scanId, scan.tenant_id, 'stage',
+    `${headline}, ${created.length} new ${created.length === 1 ? 'lead' : 'leads'}`,
+    { status, total_queries: scan.total_queries, completed_queries: scan.completed_queries,
+      failed_queries: scan.failed_queries, businesses_found: scan.businesses_found,
+      new_leads: created.length });
 }

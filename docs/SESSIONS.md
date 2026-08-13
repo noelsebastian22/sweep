@@ -11,6 +11,47 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-13 · claude-code · weekend 4 live scan, spend lockdown
+
+**Did**
+- Migration 19 (`20260813090228`): `scan_events` table + read-only RLS, `cancelled` added to `scan_status`, `scans` (with `replica identity full`) and `scan_events` added to `supabase_realtime`.
+- Migration 20 (`20260813090345`): dropped every `authenticated` write policy on `api_budgets`/`spend_grants`/`api_calls`, plus `businesses`/`psi_results`/`site_snapshots`/`trades`/`regions`/`suburbs` and the unused verbs on `scan_queries`/`leads`/`lead_events`/`scans`. Added `approve_spend()`, `budget_headroom()`, `cancel_scan()`. `spend_grants` gains `sku`.
+- `tick/events.ts` new (`logEvent`, `headroom`, `STAGE_BUDGET`). `index.ts` park fix + `settled()` guard + stage events; `search.ts`/`psi.ts` emit query/discovery/error/spend events and dedup the park line; `advance.ts` emits both stage transitions. `upsertBusiness` returns `xmax = 0` so the log can say "12 found, 3 new". Redeployed twice via the CLI.
+- Frontend: `features/scans/{realtime.ts,scan.store.ts,live-scan/,scan-builder/}`, dashboard rewritten off real counts + active-scan card, `withComponentInputBinding()` added, `/scans/new` before `/scans/:id` in the route table.
+- `@supabase/realtime-js` pinned exact at `2.112.2`. `ng build` 424.98 kB initial, no budget warning; `realtime-js` grepped out of `main` and found only in the 58 kB lazy chunk. Tests 22/22.
+- `wrangler.jsonc` added (assets-only Worker, SPA `not_found_handling`). `deploy --dry-run` passes. **Not deployed** — needs Noel's Cloudflare login and is a public publish.
+- Docs: `AGENTS.md` (17 tables, 20 migrations, realtime section, lockdown bullet, hard rule 2 amendment, current state), `BUILD-PLAN.md` §14 weekend 4 row + two new blocks, `scope.md` at-a-glance + weekend 1 AC-4 ticked + weekend 4 section.
+
+**Decided**
+- **`scan_events` is a table, not a stream.** Realtime replays nothing, so subscribing to `scan_queries`/`businesses` directly would leave a mid-scan page load blank and a finished scan with no log at all. One table also collapses three subscriptions into one and carries stage transitions and spend denials, which no existing row represents. The store treats every `SUBSCRIBED` as a resync and re-reads after its last seen id — that is the reconnect story, rather than trying to make the socket lossless.
+- **`approve_spend()` is the only writer of `spend_grants` and the only way `granted_usd` rises**, and it sets `allow_paid` itself — they were two switches, so a grant could sit approved and inert. Caps (1,000 calls / $35 per grant, $50 a month) are constants in the function body, not a config table, so moving them needs a migration. `reserve_api_calls()` deliberately still reads only `api_budgets`: it holds `for update` on one row and must stay a single-row read.
+- **A parked scan blocks the queue on purpose.** tick picks strictly the oldest active scan; skipping a parked one would put two scans' messages in flight and break AC-2. That is why `cancel_scan()` had to exist before parking could be made real.
+- Grants are attributed per `(api, sku)`, so `spend_grants` needed `sku`. Invariant now mirrors migration 18's: `granted_usd = sum(spend_grants.amount_usd)` for that tenant/api/sku.
+
+**Didn't work**
+- **The security hole was verified, not inferred.** Before migration 20, `update api_budgets set allow_paid = true, granted_usd = 99999` as `authenticated` returned **1 row affected, no error**. Worth doing the probe: reading the policy alone would not have told you whether table grants also blocked it. The probe write is real and had to be reversed by hand afterwards.
+- **`budget_headroom()` returned 0 inside `UPDATE ... RETURNING` and 698 a moment later.** Not a bug — it is `stable`, so it sees the statement-start snapshot. Nearly chased as a broken function. Read it in a separate statement.
+- **The park event was logged CONCURRENCY times.** Every worker in the `pool` reaches the denial together, and `parked` was only set after an `await`. Fixed by claiming the flag synchronously (`const firstToPark = !parked; parked = true;`) before any await. The first live park wrote the line twice; the second wrote it once.
+- **Resume looked broken for three ticks after the allowance was restored.** It was not — the parked messages still held their 120s `READ_VT` visibility timeout. Wait it out before concluding anything about the resume path.
+- **Screenshot coordinates are scaled and do not match the DOM.** A click at the button's apparent centre (884, 97) silently missed; `getBoundingClientRect()` put it at (942, 104). Same stale-coordinate trap as 12 and 13 Aug. Read the rect and click the element, or click via `.click()`.
+- **The Supabase CLI needed a login, and `supabase login` prompts for the macOS *keychain* password, not a Supabase one.** Noel's login had in fact already succeeded — `projects list` worked while the dialog was still on screen. `SUPABASE_ACCESS_TOKEN` bypasses the keychain entirely.
+- The `deploy_edge_function` MCP tool needs *every* file inlined including the entrypoint; omitting `index.ts` fails with a confusing "Entrypoint path does not exist". The CLI is far cheaper — use it.
+- Migration 19 originally contained `cancel_scan()`, which references `scan_events` and the `cancelled` enum value. Split: events + enum first, spend authority second.
+
+**Open**
+- **`approve_spend()` is unexercised through the UI.** Proven thoroughly at SQL level (demo refused, per-grant call cap, per-grant dollar cap, month ceiling, correct headroom arithmetic) and the button is wired to `db.rpc`, but clicking it would have spent real money on a paid grant, so it was not clicked. First real park in anger is the test.
+- **The app login is `noel@nooel-sebastian.com`** — note the typo'd `nooel` domain — with `NOEL_PASSWORD` from `.env`. The password grant is now verified working (200, valid session), which closes the previous entry's "sign-in round trip untested" item. Noel could not remember this; worth leaving written down.
+- **Not deployed to Cloudflare.** `wrangler.jsonc` is in place and `deploy --dry-run` passes; `npx wrangler login && npx wrangler deploy` is the remaining step.
+- The radar sweep from `BUILD-PLAN.md` §12 was **not** built. It was meant to be prototyped in weekend 0's style tile and never was, and decorative animation is banned by default — building it unproven on the hero screen was the wrong order.
+- Weekend 4 has **no spec file**, unlike 0003/0004. Decisions are in `BUILD-PLAN.md` §14, `scope.md` and the migration headers instead.
+- Still open from before: leaked password protection at `/auth/providers` is off; `/check` and `/test` remain uninstalled. `businesses_found` counts only genuinely new discoveries, so a rescan of covered ground correctly shows 0 — the terminal summary says "0 new businesses found", which reads oddly but is accurate.
+- Test scans `6648e2ae` (completed) and `b94039a9` (cancelled) are real rows in Noel's tenant and show on the dashboard.
+
+**Next**
+Weekend 5 — lead detail at `/leads/:id` as a 720px single-measure document: PSI metric breakdown, the event timeline, and the screenshots that are already sitting in the PSI payload (hard rule 4 means extracting `final-screenshot` at measure time, so `psi.ts` needs to store it — check `site_snapshots` is the right home before building the screen).
+
+**Touched** — `supabase/migrations/20260813090228_19_scan_events_and_realtime.sql`, `supabase/migrations/20260813090345_20_spend_authority.sql`, `supabase/functions/tick/{events,index,search,psi,advance,state}.ts`, `src/app/features/scans/{realtime.ts,scan.store.ts,live-scan/live-scan.ts,scan-builder/scan-builder.ts}`, `src/app/pages/dashboard/dashboard.ts`, `src/app/stores/auth.store.ts`, `src/app/{app.config,app.routes}.ts`, `src/app/layout/app-layout.ts`, `wrangler.jsonc`, `AGENTS.md`, `BUILD-PLAN.md`, `docs/scope/scope.md`, `package.json`
+
 ## 2026-08-13 · claude-code · bundle cut, weekend 4 started
 
 **Did**
