@@ -56,7 +56,7 @@ const STATUS_LABEL: Record<ScanStatus, string> = {
            rather than a permanently present card showing "none". -->
       @if (activeScan(); as s) {
         <a [routerLink]="['/scans', s.id]"
-          style="display:flex;flex-direction:column;gap:8px;padding:20px;border:1px solid var(--color-sw-rule-2);border-left:3px solid {{ statusFg(s.status) }};border-radius:var(--radius-sw);text-decoration:none;background:var(--color-sw-surface);"
+          style="display:flex;flex-direction:column;gap:8px;padding:20px;border:1px solid var(--color-sw-rule-2);border-radius:var(--radius-sw);text-decoration:none;background:var(--color-sw-surface);"
         >
           <div style="display:flex;align-items:center;gap:10px;">
             <span data-mono [style.color]="statusFg(s.status)"

@@ -89,11 +89,14 @@ const EVENT_FG: Record<EventKind, string> = {
                   <span data-mono style="font-size:13px;color:var(--color-sw-ink);">{{ rail.done }} / {{ rail.total }}</span>
                 </div>
                 <!-- A hairline track with a violet fill. No shimmer, no stripes, no
-                     indeterminate animation — the numbers above carry the information. -->
+                     indeterminate animation — the numbers above carry the information.
+                     No width transition either: it advances on discrete realtime events,
+                     the count beside it is already exact, and tweening it would be both
+                     decorative animation (banned) and a layout-animating property. -->
                 <div style="height:6px;border-radius:var(--radius-sw-pill);background:var(--color-sw-surface-2);overflow:hidden;">
                   <div [style.width.%]="rail.pct"
                     [style.background]="rail.failed ? 'var(--color-sw-fail)' : 'var(--color-sw-violet)'"
-                    style="height:100%;border-radius:var(--radius-sw-pill);transition:width 240ms ease-out;"></div>
+                    style="height:100%;border-radius:var(--radius-sw-pill);"></div>
                 </div>
               </div>
             }
@@ -102,9 +105,12 @@ const EVENT_FG: Record<EventKind, string> = {
 
         <!-- Region 3a — the parked state. The one screen element that asks for a decision. -->
         @if (store.isParked()) {
-          <div style="display:flex;flex-direction:column;gap:14px;padding:20px;border:1px solid var(--color-sw-rule-2);border-left:3px solid var(--color-sw-warn);border-radius:var(--radius-sw);background:var(--color-sw-warn-bg);">
+          <!-- Tinted fill plus a hairline, not a thick left bar. Elevation in this system
+               is a hairline, and the warn tint with a warn-coloured heading already says
+               "spend" without a coloured tab down the side. -->
+          <div style="display:flex;flex-direction:column;gap:14px;padding:20px;border:1px solid var(--color-sw-rule-2);border-radius:var(--radius-sw);background:var(--color-sw-warn-bg);">
             <div style="display:flex;flex-direction:column;gap:4px;">
-              <span style="font-family:'Geist Sans',sans-serif;font-size:15px;font-weight:600;color:var(--color-sw-ink);">Paused — the allowance ran out</span>
+              <span style="font-family:'Geist Sans',sans-serif;font-size:15px;font-weight:600;color:var(--color-sw-warn);">Paused — the allowance ran out</span>
               <span style="font-size:14px;color:var(--color-sw-ink-mid);line-height:1.5;">
                 {{ parkedMessage() }}
               </span>
@@ -146,8 +152,9 @@ const EVENT_FG: Record<EventKind, string> = {
 
         <!-- Region 3b — the terminal summary the screen settles into. -->
         @if (store.isTerminal()) {
-          <div style="display:flex;flex-direction:column;gap:8px;padding:20px;border:1px solid var(--color-sw-rule);border-left:3px solid {{ statusStyle().fg }};border-radius:var(--radius-sw);">
-            <span style="font-family:'Geist Sans',sans-serif;font-size:15px;font-weight:600;color:var(--color-sw-ink);">{{ terminalHeadline() }}</span>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:20px;border:1px solid var(--color-sw-rule);border-radius:var(--radius-sw);">
+            <span [style.color]="statusStyle().fg"
+              style="font-family:'Geist Sans',sans-serif;font-size:15px;font-weight:600;">{{ terminalHeadline() }}</span>
             <span style="font-size:14px;color:var(--color-sw-ink-mid);line-height:1.5;">{{ terminalDetail() }}</span>
             <div style="display:flex;gap:10px;margin-top:6px;">
               <button (click)="router.navigate(['/leads'])"

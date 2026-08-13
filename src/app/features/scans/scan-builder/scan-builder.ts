@@ -75,7 +75,7 @@ interface Budget { api: string; sku: string; used: number; free_allowance: numbe
         </div>
 
         @if (overBudget()) {
-          <div style="padding:14px 16px;border:1px solid var(--color-sw-rule-2);border-left:3px solid var(--color-sw-warn);border-radius:var(--radius-sw);background:var(--color-sw-warn-bg);font-size:13px;color:var(--color-sw-ink-mid);line-height:1.5;">
+          <div style="padding:14px 16px;border:1px solid var(--color-sw-rule-2);border-radius:var(--radius-sw);background:var(--color-sw-warn-bg);font-size:13px;color:var(--color-sw-ink-mid);line-height:1.5;">
             This scan needs <span data-mono style="color:var(--color-sw-ink);">{{ callCount() }}</span> calls but only
             <span data-mono style="color:var(--color-sw-ink);">{{ freeLeft() }}</span> remain free this month. It will run to the
             limit and then park, waiting for you to approve the rest. Nothing is spent without approval.
