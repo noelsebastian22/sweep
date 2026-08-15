@@ -11,6 +11,47 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-15 · claude-code · spec 0005, leads surface
+
+**Did**
+- `/architect` interview + spec `docs/specs/0005-leads-surface-detail-and-grid/` (umbrella `index.md`, `rationale.md`, 3 children, 1,546 lines). 29 ACs, 18 build tasks over two weekends. **No code written.**
+- Three critique subagent passes, all findings verified against the code before applying. A fourth pass died on a session limit before producing output.
+- Scope: weekend 5 detail page + a grid rework Noel added (pagination, viewport fit, multiselect filters, analytics band).
+
+**Decided**
+- **Screenshots captured on measurement, never in bulk.** `psi.ts` stores `final-screenshot`; a new `recheck-psi` edge function measures one business on demand. No backfill — re-measuring 450 sites is both wasteful and staler than measuring the one you open.
+- **Store the PSI JPEG as returned; no WebP.** Saves ~20 kB/capture, so ~9 MB of a 1 GB tier, against a pinned WASM codec + cold start inside the function that gates spending. Deferred with a trigger at 300 MB Storage. **Amends `BUILD-PLAN.md` §3**, which says WebP.
+- **Public `site-snapshots` bucket, plain `<img src>`.** Content is captures of public websites. A private bucket needs a storage client the browser deliberately dropped on 13 Aug.
+- **Pagination replaces CDK virtual scroll.** Fixed 25-row pages, sticky header, no internal scroll, page scrolls normally. **Supersedes `BUILD-PLAN.md` §8.3, §10 weekend 3, and spec 0004's AC-1.** Once the page may scroll (Noel wants charts below), a 25-row page has nothing to virtualise.
+- **Arrow keys primary, `j`/`k` kept as aliases, legend printed in the table footer.** §8.3 asks the grid to prove keyboard craft; craft nobody can discover proves nothing.
+- **`focusedIndex` stays a global index into `sortedRows()`; `page` is derived from it.** Rollover then falls out of the existing clamp with no edge-case code.
+- **Trigger writes `lead_events`, not the client.** Conditioned `when (old.status is distinct from new.status or old.notes is distinct from new.notes)` — `leads_touch_updated_at` already fires on every update.
+- **`lead_rows` lateral join gains `and b.website_kind = 'site'`.** One clause in the view instead of `website_kind === 'site'` at four call sites, and it also fixes the PSI range filter and `psi_score` sort, which the call-site approach left undecided.
+- Drawer becomes a read-only preview with a button through to `/leads/:id`; detail page is the only writer of status and notes. Notes are page-local — `LeadRow` has no `notes` field and the view is not widened.
+
+**Didn't work**
+- **I told Noel that measuring social businesses would shift every score and heat band. Wrong.** `score.ts:61` — `penaltyBranch` returns `socialOnly` before it ever reads `psi_score`; the PSI branches are reachable only for `site`. Option 3 is still rejected, but on wasted measurement, not scoring side effects. Correction is recorded in `rationale.md`.
+- **Bulk backfill through `sweep_psi` cannot work.** `psi.ts:76` releases any message whose `scan_id` ≠ the scan tick picked, and `drainPsi` takes that scan as an argument. Backfill messages would spin read→release forever. Would need a fake scan row with no search stage that `advance.ts` was never written for.
+- **`reserve_api_calls` is revoked from `authenticated`** (migration 18:106) and `current_tenant()` returns null on a service-role connection. Neither one client can both identify the caller and spend. Forces two connections in `recheck-psi`, per `scan-create`'s precedent.
+- **A `for update` lock held across the PageSpeed fetch stalls the engine.** `reserve_api_calls` takes `for update` on `api_budgets`; a 10–35 s transaction blocks every psi reservation in a running tick. No lock cycle, so it never deadlocks — it just looks like unexplained slowness.
+- **The obvious correction, `pg_try_advisory_xact_lock` in a short transaction committing before the fetch, silently reopens the race.** Lock releases at commit; the `psi_results` row the guard reads is not written for another 30 s, so two presses a second apart both pass. `psi_results_business_scan_uidx` is partial on `scan_id is not null` and does not catch it. **Session-level `pg_try_advisory_lock` is the only shape that satisfies both constraints.**
+- **"`focusedIndex` wins when its derived page matches the URL" fails at exactly the boundary it exists for.** Walking prev/next from row 74 to 75 crosses pages, so on return the pages differ and the URL wins, discarding the position. Replaced with construction-time precedence.
+- Storage upload is `POST` + `x-upsert` header; `PUT` with `?upsert=true` fails on every first capture and the query param is ignored.
+- `businesses` has **two** FKs to `scans` (`first_seen_scan_id`, `last_scan_id` from migration 15), so any PostgREST embed of `scans` needs an explicit FK hint.
+- `scans` has **no** name or label column, and `started_at` is nullable. An earlier draft promised `first_seen_scan_label`; dropped, scans are identified by `coalesce(started_at, created_at)` + link.
+
+**Open**
+- **Spec is unconfirmed.** `/architect`'s accept panel and its scope-linking step never ran — session ended mid-loop. Status is `Proposed`; `docs/scope/scope.md` has **no weekend 5 row** and does not link 0005.
+- **Fourth critique pass produced nothing** (session limit). Passes 1–3 each found real defects in the previous round's fixes, including two I introduced, so a fourth is worth running before building.
+- `AGENTS.md` has no `## Agent skills` section; `impeccable` is installed and unreferenced, `dataviz` is not installed but governs the four charts.
+- `AGENTS.md` still lists `lead_events.insert` as a live browser write path — after 0005 the trigger writes it, not the client.
+- Still open from before: `approve_spend()` unexercised through the UI; not deployed to Cloudflare; leaked-password protection off; weekend 4 has no spec file.
+
+**Next**
+Run a fourth critique pass on `docs/specs/0005-leads-surface-detail-and-grid/` (verify the session-lock and construction-time-precedence fixes landed cleanly and that the view-level `website_kind = 'site'` clause is a no-op against today's data, since `advance.ts:25` only ever enqueued `site`). Then confirm the spec, enroll a weekend 5 scope row linking it, and start build slice 1: `list_migrations`, then the weekend 5 migration.
+
+**Touched** — `docs/specs/0005-leads-surface-detail-and-grid/{index,rationale,0005-lead-detail-page,0005-leads-grid-rework,0005-grid-analytics-band}.md`, `docs/SESSIONS.md`
+
 ## 2026-08-13 · claude-code · weekend 4 live scan, spend lockdown
 
 **Did**
