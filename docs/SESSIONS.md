@@ -11,6 +11,22 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-16 · claude-code · untrack deno.lock
+
+**Did**
+- Removed `supabase/functions/recheck-psi/deno.lock` from git and added `supabase/functions/**/deno.lock` to `.gitignore`.
+
+**Decided**
+- **No `deno.lock` is tracked for any edge function.** `deno check` writes one per function as a side effect; the 15 Aug commit swept `recheck-psi`'s in via `git add -A`, leaving it the only tracked lock against four functions without one. A single lock file is worse than either consistent choice. If reproducible edge-function deps are wanted later, that is a deliberate change across all five, not drift from whichever function someone last typechecked.
+
+**Open**
+- Unchanged from the 15 Aug entry, and all of it still blocked on the same thing: **nothing in weekends 5 or 6 has been verified through the signed-in UI**, `recheck-psi` has never made a real measurement, and no screenshot has ever been uploaded. Also still open: not deployed to Cloudflare; leaked-password protection off; weekend 4 has no spec file; `dataviz` not installed in this repo.
+
+**Next**
+Unchanged from 15 Aug: sign in, open a lead with a measurement (AC-1/2/3/5), then press Recheck on one measured over 24 hours ago and confirm the PageSpeed block, screenshot and timeline update in place while the grid behind already shows the new score (AC-7/8/28). Then `select count(*) from site_snapshots` should be 1 and the image should render from the public bucket.
+
+**Touched** — `.gitignore`, `supabase/functions/recheck-psi/deno.lock` (deleted)
+
 ## 2026-08-15 · claude-code · weekends 5 and 6 built
 
 **Did**
