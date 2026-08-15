@@ -1,8 +1,8 @@
 // AC-3, AC-7, AC-8, AC-10, AC-13 — drains sweep_search for the active scan.
 
-import type { Sql } from './db.ts';
+import type { Sql } from '../_shared/db.ts';
 import { archiveMessage, readQueue, releaseMessage } from './queue.ts';
-import { reserve, refund, recordStatus } from './spend.ts';
+import { reserve, refund, recordStatus, isGranted } from '../_shared/spend.ts';
 import { isTradeBusiness, pool, trueTrade, norm, websiteKind, type Place } from './lib.ts';
 import { logEvent } from './events.ts';
 import type { ActiveScan } from './state.ts';
@@ -33,7 +33,7 @@ async function textSearchGated(
   | { ok: false; httpStatus: number; quotaHit: boolean; bodySnippet: string }
 > {
   const r = await reserve(sql, tenant, 'places_text_search', 'enterprise', scanId, 1);
-  if (r.grant === 'denied' || r.grant === 'no_budget') return { blocked: true };
+  if (!isGranted(r)) return { blocked: true };
 
   const body: Record<string, unknown> = {
     textQuery: `${tradeName} in ${suburbName} NSW`, maxResultCount: 20, regionCode: 'AU',

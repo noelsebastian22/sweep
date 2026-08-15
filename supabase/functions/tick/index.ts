@@ -8,7 +8,7 @@
 // scans' messages in flight at once, which is exactly the invariant AC-2 exists to hold —
 // and it is why `cancel_scan()` had to exist before parking could be made to actually park.
 
-import { createDbClient, tryLock, unlock } from './db.ts';
+import { createDbClient, tryAdvisoryLock, advisoryUnlock } from '../_shared/db.ts';
 import { pickActiveScan, enqueueSearchBatch, searchFullyResolved, psiFullyResolved, currentStatus } from './state.ts';
 import { drainSearch } from './search.ts';
 import { drainPsi } from './psi.ts';
@@ -16,6 +16,12 @@ import { advanceAfterSearch, advanceAfterPsi } from './advance.ts';
 import { headroom, logEvent, STAGE_BUDGET } from './events.ts';
 
 const BUDGET_MS = 120_000; // 30s headroom under the free-plan 150s wall clock
+
+// AC-12: two tick invocations never run concurrently. Session-level and held for the
+// request's duration on the same reserved connection, so it survives across every query
+// the request makes. `recheck-psi` locks on a different key, derived per business, so the
+// two functions never contend.
+const TICK_LOCK_KEY = 841205551;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -28,7 +34,7 @@ Deno.serve(async (req: Request) => {
   const deadline = Date.now() + BUDGET_MS;
 
   try {
-    const locked = await tryLock(sql);
+    const locked = await tryAdvisoryLock(sql, TICK_LOCK_KEY);
     // reason distinguishes the two ways a tick can decline to do work. They were
     // indistinguishable in the response until now, which made AC-12's guard impossible to
     // observe from outside: a refused lock and an idle system looked identical.
@@ -105,7 +111,7 @@ Deno.serve(async (req: Request) => {
 
       return json({ processed: true, scan_id: scan.id, reason: null });
     } finally {
-      await unlock(sql);
+      await advisoryUnlock(sql, TICK_LOCK_KEY);
     }
   } finally {
     await sql.end({ timeout: 5 });

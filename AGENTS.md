@@ -63,7 +63,7 @@ service.
 Project `sweep`, ref `ifwyufrepqkzsicjinfi`, region `ap-southeast-2`, Postgres 17.
 Schema is fully applied — 17 tables, RLS on all of them, plus the `lead_rows` view.
 
-- Schema lives in `supabase/migrations/`, 20 files, matching the remote ledger exactly.
+- Schema lives in `supabase/migrations/`, 21 files, matching the remote ledger exactly.
   **Check `list_migrations` before naming a new file** — the remote assigns the version
   timestamp, and three sessions running have had to rename local files to match it
 - **Schema changes are migrations. Never edit through the dashboard.** Both agents can
@@ -86,8 +86,22 @@ Schema is fully applied — 17 tables, RLS on all of them, plus the `lead_rows` 
   $50 a month) are constants in the function body precisely so that moving them needs a
   migration. `businesses`, `psi_results`, `site_snapshots`, `trades`, `regions` and
   `suburbs` are engine- or seed-owned and lost their write policies at the same time. The
-  only writes a user JWT still performs are `leads.update`, `lead_events.insert`,
-  `scans.insert`/`update`, `scan_queries.insert` and `scoring_profiles.*`
+  only writes a user JWT still performs are `leads.update`, `scans.insert`/`update`,
+  `scan_queries.insert` and `scoring_profiles.*`
+- **Nothing in the browser inserts `lead_events`.** The `leads_log_event` trigger
+  (migration 21) does, on any update that actually changes `status` or `notes` — the `when`
+  clause matters, because `leads_touch_updated_at` fires on every update and an
+  unconditioned trigger would log writes that changed nothing. `actor` is `auth.uid()`, so
+  it is null for an engine or hand-written write, and the detail page renders that as "by
+  the engine" rather than attributing it to a person. The client's insert policy still
+  exists — dropping it is a separate migration — but no code uses it
+- **A public `site-snapshots` Storage bucket exists** (migration 21), holding the
+  `final-screenshot` JPEG PageSpeed already returns, so a capture costs no extra API call.
+  Public because the contents are captures of websites anyone can already visit, and because
+  a private bucket would need the storage client the browser deliberately dropped — the page
+  reads it with a plain `<img src>` built by `features/leads/snapshot-url.ts`. Hard rule 4
+  still holds: the *browser* never uploads anything; the engine does, with the service role.
+  Images are stored as returned, with no WebP conversion — revisit at 300 MB of Storage
 - **The browser client is composed, not the umbrella package.** `@supabase/supabase-js` is
   deliberately *not* a dependency. `core/supabase.service.ts` builds the client from
   `@supabase/auth-js` + `@supabase/postgrest-js` and exports `auth` and `db`; import those,
@@ -118,6 +132,27 @@ Schema is fully applied — 17 tables, RLS on all of them, plus the `lead_rows` 
   chat message; the raw key must never enter a tool call or a transcript. If a fresh
   Supabase project is ever restored from a backup, this step has to be redone manually or
   `tick` silently stops authenticating (the cron job still fires, it just gets a 401)
+
+## Edge functions
+
+Four deployed: `tick` (cron), `scan-create`, `recheck-psi`, `health`, plus `seed`.
+
+**`supabase/functions/_shared/` is imported by two separate deploy units.** `db.ts`
+(connection + advisory locks), `spend.ts` (the reservation helpers) and `psi-extract.ts`
+(the PageSpeed call, the screenshot decode, the Storage upload) are shared by `tick` and
+`recheck-psi`. They are deployed independently, so **both must be redeployed whenever
+anything under `_shared/` changes** — `npx supabase functions deploy tick recheck-psi`.
+
+**Deno Deploy does not typecheck on deploy**, so a type error ships silently. Run
+`npx deno check --config <fn>/deno.json <fn>/index.ts` before deploying. Two known
+pre-existing errors remain in `tick` (`events.ts:27`, `queue.ts:30`, both `sql.json` arg
+types); anything beyond those two is new.
+
+**Narrow a `Reservation` with `isGranted(r)`, never by testing `r.grant`.** TypeScript will
+not discriminate that union through an equality check — it only drops a constituent when
+the discriminant is *exactly* the literal tested, and both constituents carry a two-literal
+union — so `if (r.grant === 'denied' || r.grant === 'no_budget') return;` leaves `callId` as
+`string | null` afterwards. That put a silent type error on every call site until 15 Aug.
 
 ## Hard rules
 
@@ -168,6 +203,21 @@ The palette is a common one — light, violet, rounded is what every UI generato
 by default. Density and mono numerics are what stop this looking generated. If a screen
 starts drifting toward padded cards and 72px rows, that is the failure mode.
 
+## Agent skills
+
+Project-wide, so they belong here rather than in any one spec.
+
+- **`impeccable`** (`.agents/skills/impeccable/`) shapes every screen. Run it for interface
+  work — new UI, redesigns, or a screen that has drifted. The design rules below are the
+  constraints it works inside, not a substitute for it
+- **`dataviz`** governs anything that plots data: the four charts under the leads grid, and
+  the scoring lab and map when they land. It is **not installed in this repo** — it ships
+  with Claude Code, so Command Code cannot see it. Two things it produced that are worth
+  keeping even without it: run its `validate_palette.js` rather than eyeballing a palette,
+  and remember that `--color-sw-heat-0` fails as a standalone chart mark on white (chroma
+  and 1.62:1 contrast) because it is a *cell background* token meant to sit under text
+- **`session-handoff`** at the start and end of every session — see the session protocol
+
 ## Conventions
 
 - Australian English in user-facing copy (`organise`, `colour`, `centre`). Code
@@ -202,23 +252,24 @@ The service role key and the Google API keys are edge-function secrets, set with
 | `BUILD-PLAN.md` | The reasoning behind every decision. §14 is current build status |
 | `docs/SESSIONS.md` | Shared session log — see the session protocol above |
 | `docs/prompts/` | Reusable task prompts, one per weekend in §10 |
-| `supabase/migrations/` | 18 migrations, matching the remote ledger exactly |
+| `supabase/migrations/` | 21 migrations, matching the remote ledger exactly |
+| `supabase/functions/_shared/` | Imported by both `tick` and `recheck-psi` — redeploy both |
 | `.agents/skills/` | Shared skills. Symlinked into `.claude/skills/` |
 | `.commandcode/taste/` | Command Code's learned conventions. **Committed on purpose** |
 
 ## Current state
 
-Weekends 0–4 are built. Backend is done and proven against real scans: schema applied, RLS
-on, spend gate tested and now locked down, `tick` + `scan-create` deployed, the engine has
-run 288 queries end to end and genuinely parks and resumes when the allowance runs out. On
-the frontend the style tile, app shell, auth, dashboard, the leads grid at `/leads`, the
-scan builder at `/scans/new` and the live scan screen at `/scans/:id` all exist.
+Weekends 0–6 are built. Backend is done and proven against real scans: schema applied, RLS
+on, spend gate tested and locked down, `tick` + `scan-create` + `recheck-psi` deployed, the
+engine has run 288 queries end to end and genuinely parks and resumes when the allowance
+runs out. On the frontend the style tile, app shell, auth, dashboard, the leads grid at
+`/leads`, the lead detail document at `/leads/:id`, the scan builder at `/scans/new` and the
+live scan screen at `/scans/:id` all exist.
 
-The app is usable end to end for the first time: pick trades and suburbs, watch the scan
-run, approve spend when it parks, triage the leads it produces.
+The app is usable end to end: pick trades and suburbs, watch the scan run, approve spend
+when it parks, triage the leads it produces, then open one and see everything known about it.
 
-Next up: weekend 5 — lead detail as a 720px document, with the PSI breakdown and the
-screenshots already sitting in the PSI payload. Then map + lab, and the landing page last.
+Next up: weekend 7 — map and scoring lab, with the landing page last.
 
 See `BUILD-PLAN.md` §14 for detailed status, and `docs/SESSIONS.md` for what the last
 session left open.

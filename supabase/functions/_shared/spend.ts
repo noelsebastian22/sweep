@@ -6,20 +6,40 @@
 // transaction as the counter increment — so there is no window in which the counter has
 // moved but the ledger has not. Everything below only fills in, or hands back, a row that
 // reserve() already created.
+//
+// Shared by `tick` and `recheck-psi`; see the note in db.ts about redeploying both.
 
 import type { Sql } from './db.ts';
 
 export type Grant = 'free' | 'paid' | 'denied' | 'no_budget';
 
 // Discriminated on grant: a granted reservation always carries the ledger row's id, a
-// refused one never does. Don't destructure it — narrowing on `grant` is what removes the
-// need for a non-null assertion on callId at the call sites.
-export type Reservation =
-  | { grant: 'free' | 'paid'; callId: string }
-  | { grant: 'denied' | 'no_budget'; callId: null };
+// refused one never does.
+export type GrantedReservation = { grant: 'free' | 'paid'; callId: string };
+export type RefusedReservation = { grant: 'denied' | 'no_budget'; callId: null };
+export type Reservation = GrantedReservation | RefusedReservation;
 
+/**
+ * Narrow a reservation to the granted case. Use this rather than testing `grant` directly:
+ * TypeScript will not discriminate this union through an equality check, because it only
+ * drops a constituent when the discriminant is *exactly* the literal tested, and both
+ * constituents here carry a two-literal union. `if (r.grant === 'denied' || r.grant ===
+ * 'no_budget') return;` therefore leaves `callId` as `string | null` afterwards, which is
+ * what put a type error on every call site that used it — silent, because Deno Deploy does
+ * not typecheck on deploy.
+ *
+ * A predicate on `callId` sidesteps the discriminant entirely and is the same test the
+ * runtime cares about: a reservation has a ledger row, or it was refused.
+ */
+export function isGranted(r: Reservation): r is GrantedReservation {
+  return r.callId !== null;
+}
+
+// scanId is nullable: a recheck from the detail page is a real metered call that belongs
+// on the ledger, but it belongs to no scan. reserve_api_calls already accepts null there —
+// this signature was the only thing insisting otherwise.
 export async function reserve(
-  sql: Sql, tenant: string, api: string, sku: string, scanId: string, n = 1,
+  sql: Sql, tenant: string, api: string, sku: string, scanId: string | null, n = 1,
 ): Promise<Reservation> {
   const [row] = await sql`
     select grant_kind, call_id

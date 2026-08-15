@@ -1,6 +1,6 @@
 // The two state-machine transitions. AC-4 (search -> measuring), AC-6 (measuring -> final).
 
-import type { Sql } from './db.ts';
+import type { Sql } from '../_shared/db.ts';
 import { sendMessage } from './queue.ts';
 import { ceiling } from './lib.ts';
 import { logEvent } from './events.ts';

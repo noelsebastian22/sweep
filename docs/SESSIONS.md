@@ -11,6 +11,42 @@ it turned out wrong, say so in a new one.
 
 <!-- newest first -->
 
+## 2026-08-15 · claude-code · weekends 5 and 6 built
+
+**Did**
+- Spec 0005 confirmed (`Accepted`), weekend 5 + 6 rows added to `docs/scope/scope.md`. The fourth critique pass was **skipped** on Noel's instruction.
+- Migration 21 (`20260815095533`): `site_snapshots.psi_result_id` + unique `(psi_result_id, viewport)`, `lead_rows` gains `first_seen_scan_id`/`first_seen_scan_started_at` and the `and b.website_kind = 'site'` clause, conditioned `leads_log_event` trigger + `log_lead_event()`, public `site-snapshots` bucket. `get_advisors` clean (same four known warnings).
+- `supabase/functions/_shared/{db.ts,spend.ts,psi-extract.ts}`; seven `tick/` imports repointed; `tick/psi.ts` now stores the `final-screenshot` with `on conflict do nothing returning id` and the 23505 catch deleted. `recheck-psi` written and deployed; both functions redeployed together.
+- `/leads/:id` — 720px document: score derivation, contact, screenshot frame, five-metric PageSpeed block, merged timeline, page-local notes, prev/next. `leads.store.ts` gains `page`/`pageRows`/`rowRange`, `resetPosition()`, `setPage`, `replaceFilters`, `setSortExplicit`, `applyPsiResult`; `updateStatus` widened to return `updated_at`.
+- Grid: CDK virtual scroll gone, 25-row pages, sticky header, footer legend + page controls, arrow keys (`j`/`k` kept), Aria `Listbox` multiselect bar, read-only drawer, stat tiles, four inline-SVG charts, scan context. `leads-url-state.ts` for URL sync.
+- `ng build` 415.51 kB initial (**down** from 424.98), tests **45/45** (22 → 45; new specs for `leads-url-state.ts` and `analytics.ts`).
+
+**Decided**
+- **`isGranted(r)` is the only way to narrow a `Reservation`.** TypeScript will not discriminate that union through `r.grant === 'denied' || r.grant === 'no_budget'` — it drops a constituent only when the discriminant is *exactly* the literal tested, and both constituents carry two-literal unions. Verified in isolation, not guessed. This had left a silent type error at every call site since weekend 2; Deno Deploy does not typecheck, so nothing ever surfaced it. Recorded in `AGENTS.md`.
+- **The multiselect is a disclosure button + Aria `Listbox`, not Aria `Combobox`.** Spec 0005b names `Combobox`, but it is built around an input's text value (`value: ModelSignal<string>`, inline suggestions) and fights a trigger whose job is to summarise a selection. AC-20 only requires `Listbox` with `multi` + `selectionMode="explicit"`, which is what carries the keyboard behaviour.
+- **Website state is plotted as a sequential scale, not categories.** `none → social → site` is monotonic, so it takes the heat ramp. `--color-sw-heat-0` is excluded: measured with the dataviz validator it fails chroma (reads grey) and contrast (1.62:1) as a standalone mark on white — it is a *cell background* token meant to sit under text. Identity comes from direct labels + a 2px surface gap, never colour alone.
+- **Charts stay non-interactive**, per spec 0005c. Marks carry `<title>` for a native tooltip and an accessible name — no script, no motion, nothing for `AGENTS.md`'s animation ban to catch.
+
+**Didn't work**
+- **Spec 0005 is wrong that the `psi_results` FK hint is required.** It predicted `site_snapshots.psi_result_id` would make `site_snapshots` a junction and trip PostgREST's many-to-many ambiguity check. Tested live after migration 21: unhinted returns **200**. The `scans` hint genuinely is required — unhinted it returns **HTTP 300 `PGRST201`**. Both kept; only one is load-bearing. Corrected in `lead-detail.data.ts` and `BUILD-PLAN.md` §14.
+- **Three URL-sync bugs, all at boundaries, none of which fail loudly.** (1) On return from `/leads/:id`, `queryParamMap` emits the *stale* URL before the position-preserving `navigate` resolves, so the first emission wiped the handoff — needs an explicit `skipFirst`. (2) The URL is parsed at construction but rows arrive later, so `?page=3` was clamped against `pageCount() === 1` and silently became page 1 — needs a re-apply once `loaded()` flips. (3) Heat bands were validated against an empty basis pre-load, so a shared `?heat=4` link lost its filter — `parseLeadsUrl` now takes `null` for "cannot judge yet".
+- **`tsc --noEmit` does not check Angular templates.** A method referenced only in the detail page's template (`stepButton`) passed `tsc` and failed the `ng build`. Run the build, not just `tsc`.
+- **`npm test` hangs** — `ng test` defaults to watch mode. Use `npx ng test --watch=false --browsers=ChromeHeadless`.
+- A test written straight off the spec caught the implementation disagreeing with it: `sort=nonsense.asc` kept `asc` while falling back to column `score`. §0005b says an unknown sort falls back to `score.desc` as a pair. Implementation fixed, not the test.
+- `.abortSignal()` lives on the PostgREST *filter* builder, so it must be applied before `.maybeSingle()` narrows the chain.
+
+**Open**
+- **Nothing is verified through the signed-in UI.** Everything provable without a session was proven: migration applied, `get_advisors` clean, the `leads_log_event` trigger exercised in a rolled-back transaction (two events for two real changes, none for a no-op update), the detail page's embed shape validated live, every `recheck-psi` refusal path (401/405/422 + tenant refusal), and `api_budgets.used = sum(api_calls.units)` still holding across all four budget rows afterwards. **The happy paths need Noel signed in** — no credentials here, and `recheck-psi` correctly refuses the anon key with 401.
+- **`recheck-psi` has never made a real measurement.** One press proves the reservation, the PageSpeed call, the Storage upload, the `site_snapshots` row and `applyPsiResult` in one go. Costs 1 free-tier PSI call.
+- **No screenshot has ever been uploaded**, so every lead currently shows an empty frame. The bucket is confirmed present and public (`NoSuchKey` on a missing object, not a missing-bucket error), but the upload path itself is unexercised.
+- `dataviz` still not installed in this repo — Command Code cannot see it. The two findings worth keeping are now in `AGENTS.md`.
+- Still open from before: not deployed to Cloudflare; leaked-password protection off; weekend 4 has no spec file.
+
+**Next**
+Sign in and walk the two happy paths: open a lead with a measurement (AC-1/2/3/5), then press Recheck on one measured over 24 hours ago and confirm the PageSpeed block, screenshot and timeline update in place and the grid behind it already shows the new score (AC-7/8/28). Then check `select count(*) from site_snapshots` is 1 and the image renders from the public bucket.
+
+**Touched** — `supabase/migrations/20260815095533_21_lead_detail_and_snapshots.sql`, `supabase/functions/_shared/{db,spend,psi-extract}.ts`, `supabase/functions/recheck-psi/{index.ts,deno.json}`, `supabase/functions/tick/{index,psi,search,advance,state,events,queue}.ts`, `src/app/features/leads/{leads.store.ts,leads-url-state.ts,snapshot-url.ts,lead-detail/,analytics-band/,leads-grid/,lead-drawer/}`, `src/app/shared/ui/{multi-select/,hairline-table/}`, `src/app/app.routes.ts`, `AGENTS.md`, `BUILD-PLAN.md`, `docs/scope/scope.md`
+
 ## 2026-08-15 · claude-code · spec 0005, leads surface
 
 **Did**

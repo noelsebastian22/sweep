@@ -9,6 +9,8 @@
 | Weekend 2: Engine and spend gate | done | [0003](../specs/0003-weekend-2-engine-spend-gate/index.md) |
 | Weekend 3: Leads grid | done | [0004](../specs/0004-weekend-3-leads-grid/index.md) |
 | Weekend 4: Live scan | done | built without a spec file — see 13 Aug session log |
+| Weekend 5: Lead detail page | built | [0005](../specs/0005-leads-surface-detail-and-grid/index.md) |
+| Weekend 6: Grid rework and analytics band | built | [0005](../specs/0005-leads-surface-detail-and-grid/index.md) |
 
 ---
 
@@ -108,3 +110,51 @@ previously set its own `allow_paid` and `granted_usd`, verified exploitable befo
       the UI; `approve_spend` caps proven at SQL level (demo refused, per-grant cap, month
       ceiling). `ng build` clean at 424.98 kB initial, `realtime-js` confirmed absent from
       `main`. Tests 22/22.
+
+### Weekend 5: Lead detail page · built
+
+A new page at `/leads/:id` showing one lead as a 720px single-column document rather than a
+row: the screenshot of their site, the full PageSpeed breakdown, the arithmetic behind the
+score, and a timeline of everything that has happened to them. Behind it, the engine starts
+keeping the `final-screenshot` PageSpeed already returns, and a `recheck-psi` function
+measures a single business on demand. [0005](../specs/0005-leads-surface-detail-and-grid/index.md)
+
+**Decision**: screenshots are captured on measurement and never in bulk. The bytes are
+already in a response the engine pays for, so storing them costs nothing extra; re-measuring
+450 sites nobody may open is both wasteful and staler than measuring the one you have open.
+No backfill job exists. [0005](../specs/0005-leads-surface-detail-and-grid/index.md)
+
+**Decision**: the PSI JPEG is stored as returned, with no WebP conversion. Converting saves
+~20 kB per capture (~9 MB against a 1 GB tier) in exchange for a pinned WASM codec and its
+cold start inside `tick`, the one function that gates spending. Deferred with a trigger at
+300 MB of Storage. **Amends `BUILD-PLAN.md` §3.**
+
+**Decision**: `recheck-psi` holds a **session-level** `pg_try_advisory_lock` across the whole
+measurement and opens no transaction around the PageSpeed fetch. A transaction-scoped lock
+releases at commit and reopens the double-measure race; a held transaction blocks every psi
+reservation in a running scan for 10–35 s.
+
+- [x] Build it: code in `supabase/migrations/20260815095533_21_lead_detail_and_snapshots.sql`, `supabase/functions/_shared/`, `supabase/functions/recheck-psi/`, `src/app/features/leads/lead-detail/`
+- [ ] Verify it: AC-1..AC-12, AC-27, AC-28, AC-29 — migration, trigger, embed shape and every `recheck-psi` refusal path verified 15 Aug; the signed-in UI and one real measurement still need Noel
+
+### Weekend 6: Grid rework and analytics band · built
+
+The grid stops being a scroll box inside a scrolling page: fixed pages of 25 rows, a sticky
+header, a footer carrying the keyboard legend and page controls, a compact multiselect
+filter bar, and a band of stat tiles and charts around the table.
+[0005](../specs/0005-leads-surface-detail-and-grid/index.md)
+
+**Decision**: pagination replaces CDK virtual scroll, and spec 0004's AC-1 is superseded with
+it. Once the page is allowed to scroll so charts can sit beneath the table, a page of 25 rows
+has nothing to virtualise. **Supersedes `BUILD-PLAN.md` §8.3 and §10 weekend 3.**
+
+**Decision**: `focusedIndex` stays a global index into `sortedRows()` and `page` is derived
+from it, so rollover across page boundaries falls out of the existing clamp rather than
+needing edge-case code, and there is never a second page-relative index to keep in step.
+
+**Decision**: arrow keys are the primary binding with `j`/`k` kept as aliases, and the legend
+is printed in the table footer. §8.3 asks this grid to prove keyboard craft, and craft nobody
+can discover proves nothing.
+
+- [x] Build it: code in `src/app/features/leads/{leads-grid,leads-url-state.ts,analytics-band}/`, `src/app/shared/ui/multi-select/`
+- [ ] Verify it: AC-13..AC-26 — build clean at 415.51 kB and 45/45 tests 15 Aug; sticky header, pagination and keyboard rollover need a signed-in pass

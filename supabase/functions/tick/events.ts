@@ -8,7 +8,7 @@
 //      no other context. "Electrician · Katoomba — 12 found, 3 new" beats
 //      "query 4f2a done".
 
-import type { Sql } from './db.ts';
+import type { Sql } from '../_shared/db.ts';
 
 export type EventKind = 'stage' | 'query' | 'discovery' | 'spend' | 'error';
 

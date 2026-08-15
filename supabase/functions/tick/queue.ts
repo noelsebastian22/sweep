@@ -2,7 +2,7 @@
 // PostgREST), which is why tick talks to Postgres directly rather than through
 // supabase-js for any of this.
 
-import type { Sql } from './db.ts';
+import type { Sql } from '../_shared/db.ts';
 
 export interface QueueMessage<T> {
   msg_id: string | number;

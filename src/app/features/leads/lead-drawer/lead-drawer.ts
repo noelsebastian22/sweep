@@ -1,4 +1,5 @@
-import { Component, ChangeDetectionStrategy, inject, input, computed, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, input, computed } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { AuthStore } from '../../../stores/auth.store';
 import { LeadsStore, ScoredLeadRow, LeadStatus } from '../leads.store';
 import { scoreBreakdown, WEBSITE_KIND_LABEL } from '../../../shared/scoring/score';
@@ -8,13 +9,18 @@ export const STATUS_OPTIONS: LeadStatus[] = [
 ];
 
 /**
- * The AC-7 inline lead drawer. Deliberately throwaway — weekend 5 replaces it wholesale
- * with the real 720px detail document (spec 0004's Follow-up), so this stays a single
- * self-contained component rather than a reusable pattern.
+ * A read-only preview of one lead (AC-21). It still opens on row click and on Enter, and it
+ * carries a single button through to `/leads/:id`.
+ *
+ * It deliberately **no longer writes status**. The detail page is now the only place status
+ * and notes are written, so there is one write path rather than two — both would otherwise
+ * call the same `updateStatus`, need the same demo-tenant disabling, and drift. The button
+ * is focusable, so Enter twice takes you from the grid to the full page without a mouse.
  */
 @Component({
   selector: 'app-lead-drawer',
   standalone: true,
+  imports: [RouterLink],
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <aside
@@ -67,23 +73,14 @@ export const STATUS_OPTIONS: LeadStatus[] = [
         }
 
         <div style="display:flex;flex-direction:column;gap:6px;">
-          <label data-mono for="lead-status" style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.14em;color:var(--color-sw-ink-lo);">Status</label>
-          <select
-            id="lead-status"
-            [value]="row().status"
-            (change)="onStatusChange($event)"
-            [disabled]="authStore.isDemo()"
-            [attr.title]="authStore.isDemo() ? 'Read only in the demo' : null"
-            style="height:40px;padding:0 12px;border:1px solid var(--color-sw-rule-2);border-radius:var(--radius-sw-sm);background:var(--color-sw-surface-2);font-family:'Geist Sans',sans-serif;font-size:14px;color:var(--color-sw-ink);"
-          >
-            @for (s of statusOptions; track s) {
-              <option [value]="s">{{ s }}</option>
-            }
-          </select>
-          @if (statusError()) {
-            <p style="font-size:13px;color:var(--color-sw-fail);margin:4px 0 0;">{{ statusError() }}</p>
-          }
+          <span data-mono style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.14em;color:var(--color-sw-ink-lo);">Status</span>
+          <p style="font-size:14px;color:var(--color-sw-ink);margin:0;text-transform:capitalize;">{{ row().status.replace('_', ' ') }}</p>
         </div>
+
+        <a
+          [routerLink]="['/leads', row().lead_id]"
+          style="display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 16px;border:1px solid var(--color-sw-violet);border-radius:var(--radius-sw-sm);background:var(--color-sw-violet);color:white;font-family:'Geist Sans',sans-serif;font-size:14px;font-weight:500;text-decoration:none;"
+        >Open full detail →</a>
       </div>
     </aside>
   `,
@@ -93,9 +90,6 @@ export class LeadDrawer {
 
   readonly authStore = inject(AuthStore);
   private readonly leadsStore = inject(LeadsStore);
-
-  readonly statusOptions = STATUS_OPTIONS;
-  readonly statusError = signal<string | null>(null);
 
   readonly websiteLabel = computed(() => WEBSITE_KIND_LABEL[this.row().website_kind ?? 'none']);
 
@@ -107,12 +101,5 @@ export class LeadDrawer {
 
   close(): void {
     this.leadsStore.openLead(null);
-  }
-
-  async onStatusChange(event: Event): Promise<void> {
-    const status = (event.target as HTMLSelectElement).value as LeadStatus;
-    this.statusError.set(null);
-    const result = await this.leadsStore.updateStatus(this.row().lead_id, status);
-    if (!result.ok) this.statusError.set(result.error ?? 'Could not update status.');
   }
 }

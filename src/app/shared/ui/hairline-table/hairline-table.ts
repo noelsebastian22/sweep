@@ -17,18 +17,24 @@ export function hairlineGridTemplate(columns: HairlineColumn[]): string {
 
 /**
  * The dense table shell (AGENTS.md design rules: 44px rows, hairline separated, never
- * boxed cards). Owns the bordered container and the sticky, sortable header row; the
- * virtualised body (`cdk-virtual-scroll-viewport` + row cells) is projected in by the
- * feature that uses it, so this stays reusable for any future dense table, not just the
- * leads grid.
+ * boxed cards). Owns the bordered container and the sticky, sortable header row; the body
+ * rows are projected in by the feature that uses it, so this stays reusable for any future
+ * dense table, not just the leads grid.
+ *
+ * **The container has no `overflow` and that is load-bearing.** `position: sticky` resolves
+ * against the nearest scrolling ancestor and fails outright inside any ancestor whose
+ * `overflow` is not `visible` — silently, with no error and no warning. This container used
+ * to set `overflow: hidden` purely to clip the border radius against the header; the radius
+ * now sits on the header's own top corners instead. If the header ever stops sticking, an
+ * ancestor with `overflow` set is the first thing to check.
  */
 @Component({
   selector: 'app-hairline-table',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
-    <div style="border:1px solid var(--color-sw-rule);border-radius:var(--radius-sw);overflow:hidden;display:flex;flex-direction:column;">
-      <div role="row" style="display:grid;background:var(--color-sw-surface);border-bottom:1px solid var(--color-sw-rule);" [style.grid-template-columns]="gridTemplateColumns()">
+    <div style="border:1px solid var(--color-sw-rule);border-radius:var(--radius-sw);display:flex;flex-direction:column;">
+      <div role="row" style="display:grid;position:sticky;top:0;z-index:5;background:var(--color-sw-surface);border-bottom:1px solid var(--color-sw-rule);border-radius:var(--radius-sw) var(--radius-sw) 0 0;" [style.grid-template-columns]="gridTemplateColumns()">
         @for (col of columns(); track col.key) {
           <button
             type="button"

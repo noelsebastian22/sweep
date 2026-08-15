@@ -2,7 +2,7 @@
 // checking whether a stage has fully resolved. Kept separate from advance.ts, which owns
 // the two state-machine transitions (their cutoff/lead logic), not the plumbing around them.
 
-import type { Sql } from './db.ts';
+import type { Sql } from '../_shared/db.ts';
 import { sendMessage } from './queue.ts';
 
 export interface ActiveScan {

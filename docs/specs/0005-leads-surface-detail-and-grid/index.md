@@ -1,7 +1,8 @@
 # 0005. Leads surface: detail page and grid rework
 
 **Date**: 2026-08-15
-**Status**: Proposed
+**Status**: Accepted (2026-08-15). Its two amendments to `BUILD-PLAN.md` — §3's WebP
+conversion and §8.3/§10's virtual scroll — are ratified with it.
 
 ## Summary
 

@@ -18,6 +18,10 @@ export const routes: Routes = [
       { path: '', loadComponent: () => import('./pages/dashboard/dashboard').then((m) => m.Dashboard) },
       { path: 'leads', loadComponent: () => import('./features/leads/leads-grid/leads-grid').then((m) => m.LeadsGrid) },
 
+      // The deep link for one lead. `?lead=` retired with spec 0005 — the drawer is now a
+      // read-only preview and this page is the only place status and notes are written.
+      { path: 'leads/:id', loadComponent: () => import('./features/leads/lead-detail/lead-detail').then((m) => m.LeadDetail) },
+
       // `new` must be declared before `:id`, or the builder route is swallowed as a scan
       // whose id is the literal string "new".
       { path: 'scans/new', loadComponent: () => import('./features/scans/scan-builder/scan-builder').then((m) => m.ScanBuilder) },

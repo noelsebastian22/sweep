@@ -1172,14 +1172,14 @@ Updated as work lands. Weekend numbers refer to §10.
 | 2 — Engine + spend gate | **Done and fully verified, 13 Aug 2026** | `tick` + `scan-create` deployed, migrations 15–16 applied, cron authenticating via Vault. Proven against four live scans (6, 6-again, 288, and a 2-query overlap rescan). Both follow-ups closed. The budget drift was misdiagnosed: the `places_text_search` −24 was correct refund behaviour, only psi's +20 was real, and it is now structurally impossible (migration 18 — the reservation writes its own `api_calls` row in the same transaction). The `businesses_found=0` status gap is fixed in `advance.ts` and proven on a real 100%-overlap rescan. AC-1, AC-7, AC-12 all closed; AC-12 needed a `reason` field on tick's response to make the lock observable at all. See `docs/specs/0003-weekend-2-engine-spend-gate/verify.md` |
 | 3 — Leads grid | **Done and verified, 13 Aug 2026** | Migration 17 applied (seeds default `scoring_profiles`). `score.ts`, `leads.store.ts`, hairline table + heat cell + CDK virtual scroll, filters, `j`/`k`/`enter` nav, inline drawer, ⌘K palette (`@angular/cdk` + `@angular/aria` added). Full AC-1..AC-13 pass on 13 Aug across both tenants, including the status write against the real 450-lead tenant. Structural claims measured in the DOM, not eyeballed: 0 network calls across all 9 column sorts, row height 43.99px, `tabular-nums`, 19-of-64 virtual rendering. `npm test` now 22/22 — it was 21/22, the Angular scaffold's `app.spec.ts` had been red since the real template landed and nobody was reading it. `ng build` succeeds with one bundle-budget warning (524.69 kB vs 500 kB) — open, see `verify.md`. See `docs/specs/0004-weekend-3-leads-grid/verify.md` |
 | **4 — Live scan** | **Done and verified, 13 Aug 2026** | Migrations 19–20 applied. `/scans/:id` with realtime (dynamic `import('@supabase/realtime-js')`, confirmed absent from `main` by grepping the built bundle), two-stage progress rail, activity feed off a new `scan_events` table, approval panel and terminal summary. `/scans/new` scan builder with a call-count preflight — `scan-create` had been deployed since weekend 2 with nothing calling it. Dashboard wired to real counts plus the active-scan card. Four backend gaps closed, see below. Proven live: park held over three consecutive ticks then resumed on headroom; a server-side `scan_events` insert appeared on screen with no reload; `cancel_scan` driven through the UI; `approve_spend` caps all refused correctly. `ng build` clean at 424.98 kB initial, tests 22/22 |
-| 5–7 | Not started | Weekend 5 is specced but unconfirmed — see the block below |
+| **5 — Lead detail** | **Built, 15 Aug 2026** | Migration 21 applied. `supabase/functions/_shared/` extracted (`db.ts`, `spend.ts`, `psi-extract.ts`); `tick/psi.ts` now keeps the `final-screenshot` PageSpeed returns; `recheck-psi` deployed. `/leads/:id` renders as a 720px document — score derivation, contact, screenshot, five-metric PageSpeed breakdown, timeline, notes, prev/next. Verified at SQL and API level, **not yet through the signed-in UI** — see below |
+| **6 — Grid rework + analytics band** | **Built, 15 Aug 2026** | CDK virtual scroll removed, fixed 25-row pages, sticky header, footer legend + page controls, arrow keys with `j`/`k` retained, Angular Aria multiselect filter bar, read-only drawer. Stat tiles above the table; four inline-SVG charts and scan context below. `ng build` 415.51 kB initial (**down** from 424.98 — virtual scroll is gone), tests 45/45 |
+| 7 | Not started | Map + scoring lab, then the landing page |
 
-**Spec 0005 is written and proposes two amendments to this document, 15 Aug 2026.**
-`docs/specs/0005-leads-surface-detail-and-grid/` covers weekend 5's lead detail page plus a
-grid rework Noel added: pagination, viewport fit, multiselect filter dropdowns, and a band
-of tiles and charts under the table. Two weekends of work, 29 acceptance criteria. The spec
-is **`Proposed` and not yet confirmed**, and `docs/scope/scope.md` has no weekend 5 row
-linking it, so nothing here has been ratified.
+**Spec 0005 is accepted and built, 15 Aug 2026.** Its two amendments to this document are
+ratified with it. `docs/specs/0005-leads-surface-detail-and-grid/` covered weekend 5's lead
+detail page plus the grid rework Noel added; `docs/scope/scope.md` now carries weekend 5 and
+6 rows linking it.
 
 The two amendments, both deliberate:
 
@@ -1192,10 +1192,21 @@ The two amendments, both deliberate:
   sit beneath the table, a page that fits has nothing to virtualise. The nested scroll region
   (a 600px viewport inside a scrolling `<main>`) was the actual complaint.
 
-Also worth knowing before building: the engine only ever measures `website_kind = 'site'`
-(`advance.ts:25`), and `penaltyBranch` in `score.ts` returns `socialOnly` before it reads
-`psi_score`, so measuring a social business cannot change any score. An earlier draft of the
-spec claimed otherwise; the correction is in its `rationale.md`.
+Also worth knowing: the engine only ever measures `website_kind = 'site'` (`advance.ts:25`),
+and `penaltyBranch` in `score.ts` returns `socialOnly` before it reads `psi_score`, so
+measuring a social business cannot change any score. An earlier draft of the spec claimed
+otherwise; the correction is in its `rationale.md`. The view-level `and b.website_kind =
+'site'` clause added in migration 21 was confirmed a **no-op against today's data** before
+it was written — 0 successful measurements belong to a non-`site` business — so it guards
+the future rather than changing the present.
+
+**One thing spec 0005 got wrong, found while building it.** The spec said the
+`psi_results!psi_results_business_id_fkey` hint on the detail page's embed was *required*,
+predicting that `site_snapshots.psi_result_id` would make `site_snapshots` a junction
+between `businesses` and `psi_results` and trip PostgREST's many-to-many ambiguity check.
+Tested against the live API after migration 21 landed: the unhinted embed returns 200. The
+`scans` hint genuinely is required — unhinted it returns HTTP 300 `PGRST201`. Both hints are
+kept, but only one is load-bearing.
 
 **The browser could raise its own spending limit, until 13 Aug 2026.** Migration 10 gave
 `authenticated` a generic write policy on every tenant-scoped table, which included

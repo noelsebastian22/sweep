@@ -1,14 +1,18 @@
 // AC-5, AC-7, AC-8, AC-10 — drains sweep_psi for the active scan.
 //
 // AGENTS.md hard rule 4: never store raw PageSpeed JSON (a single response is ~600KB
-// against a 500MB free tier). Only the five metrics below and the score are kept; the
-// final-screenshot audit and everything else in the payload is discarded (screenshot
-// extraction is its own out-of-scope feature this weekend — AC-11).
+// against a 500MB free tier). Only the five metrics, the score, and the final-screenshot
+// bytes survive a response; everything else is discarded when runPsi() returns.
+//
+// Spec 0005 AC-11: the screenshot is kept now rather than thrown away. It arrives at zero
+// additional API cost, because the bytes are already in a response the engine has paid
+// for — which is the whole reason capture happens on measurement and never in bulk.
 
-import type { Sql } from './db.ts';
+import type { Sql } from '../_shared/db.ts';
 import { archiveMessage, readQueue, releaseMessage } from './queue.ts';
-import { reserve, recordStatus } from './spend.ts';
-import { pool, sleep } from './lib.ts';
+import { reserve, recordStatus, isGranted } from '../_shared/spend.ts';
+import { runPsi, snapshotPath, uploadSnapshot } from '../_shared/psi-extract.ts';
+import { pool } from './lib.ts';
 import { logEvent } from './events.ts';
 import type { ActiveScan } from './state.ts';
 
@@ -20,57 +24,6 @@ interface PsiMessage {
   business_id: string;
   tenant_id: string;
   website_url: string;
-}
-
-interface PsiOutcome {
-  httpStatus: number | null;
-  score: number | null;
-  lcpMs: number | null;
-  cls: number | null;
-  tbtMs: number | null;
-  fcpMs: number | null;
-  siMs: number | null;
-  error: string | null;
-}
-
-// Two-attempt retry, 4xx early exit — ported verbatim from harvest.mjs's psi().
-async function runPsi(url: string): Promise<PsiOutcome> {
-  const q = new URLSearchParams({
-    url, strategy: 'mobile', category: 'performance', key: Deno.env.get('GOOGLE_PSI_API_KEY')!,
-  });
-  let last: string | null = null;
-  let lastStatus: number | null = null;
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${q}`);
-      lastStatus = res.status;
-      if (res.ok) {
-        const json = await res.json();
-        const audits = json?.lighthouseResult?.audits ?? {};
-        const s = json?.lighthouseResult?.categories?.performance?.score;
-        return {
-          httpStatus: res.status,
-          score: s == null ? null : Math.round(s * 100),
-          lcpMs: audits['largest-contentful-paint']?.numericValue != null ? Math.round(audits['largest-contentful-paint'].numericValue) : null,
-          cls: audits['cumulative-layout-shift']?.numericValue ?? null,
-          tbtMs: audits['total-blocking-time']?.numericValue != null ? Math.round(audits['total-blocking-time'].numericValue) : null,
-          fcpMs: audits['first-contentful-paint']?.numericValue != null ? Math.round(audits['first-contentful-paint'].numericValue) : null,
-          siMs: audits['speed-index']?.numericValue != null ? Math.round(audits['speed-index'].numericValue) : null,
-          error: s == null ? 'no score returned' : null,
-        };
-      }
-      last = `HTTP ${res.status}`;
-      if (res.status !== 429 && res.status < 500) break; // 4xx won't fix itself
-    } catch (e) {
-      last = String(e).slice(0, 40);
-    }
-    await sleep(3000);
-  }
-  return {
-    httpStatus: lastStatus, score: null, lcpMs: null, cls: null, tbtMs: null, fcpMs: null, siMs: null,
-    error: last || 'unreachable',
-  };
 }
 
 export async function drainPsi(sql: Sql, scan: ActiveScan, deadline: number): Promise<void> {
@@ -99,7 +52,7 @@ export async function drainPsi(sql: Sql, scan: ActiveScan, deadline: number): Pr
       if (parked) return;
 
       const r = await reserve(sql, payload.tenant_id, 'psi', 'free', scan.id, 1);
-      if (r.grant === 'denied' || r.grant === 'no_budget') {
+      if (!isGranted(r)) {
         // Claim the park synchronously, before any await — see the same guard in
         // search.ts. Every worker in the pool hits the denial together, and without this
         // each one writes its own copy of the pause message.
@@ -122,13 +75,34 @@ export async function drainPsi(sql: Sql, scan: ActiveScan, deadline: number): Pr
       const outcome = await runPsi(payload.website_url);
       await recordStatus(sql, r.callId, outcome.httpStatus);
 
-      try {
-        await sql`
-          insert into psi_results (business_id, scan_id, strategy, score, lcp_ms, cls, tbt_ms, fcp_ms, si_ms, error)
-          values (${payload.business_id}, ${scan.id}, 'mobile', ${outcome.score}, ${outcome.lcpMs}, ${outcome.cls}, ${outcome.tbtMs}, ${outcome.fcpMs}, ${outcome.siMs}, ${outcome.error})`;
-      } catch (e) {
-        // 23505 = unique_violation — a sibling redelivery won the race; already done, not an error.
-        if ((e as { code?: string }).code !== '23505') throw e;
+      // `on conflict do nothing returning id` replaces the 23505 catch that used to sit
+      // here: one mechanism for the redelivery race instead of two competing ones. The
+      // conflict target is left implicit so it covers psi_results_business_scan_uidx,
+      // which is partial on `scan_id is not null`.
+      const [inserted] = await sql`
+        insert into psi_results (business_id, scan_id, strategy, score, lcp_ms, cls, tbt_ms, fcp_ms, si_ms, error)
+        values (${payload.business_id}, ${scan.id}, 'mobile', ${outcome.score}, ${outcome.lcpMs}, ${outcome.cls}, ${outcome.tbtMs}, ${outcome.fcpMs}, ${outcome.siMs}, ${outcome.error})
+        on conflict do nothing
+        returning id`;
+
+      // AC-12. An empty returning set means a sibling redelivery won the race: the row
+      // exists and its screenshot is already uploaded. Skipping here is what prevents a
+      // duplicate *object* — the unique index on site_snapshots only constrains the row,
+      // and by the time it fired the bytes would already be in the bucket.
+      if (inserted && outcome.screenshot) {
+        const path = snapshotPath(payload.tenant_id, payload.business_id, inserted.id);
+        const uploadError = await uploadSnapshot(path, outcome.screenshot);
+        if (uploadError) {
+          // Not fatal: the measurement stands and the numbers are correct. The lead is
+          // left with a measurement and no screenshot, which the detail page shows as an
+          // empty frame rather than pretending nothing happened.
+          console.error(`snapshot upload failed for ${payload.business_id}: ${uploadError}`);
+        } else {
+          await sql`
+            insert into site_snapshots (business_id, psi_result_id, storage_path, viewport)
+            values (${payload.business_id}, ${inserted.id}, ${path}, 'mobile')
+            on conflict do nothing`;
+        }
       }
 
       await archiveMessage(sql, 'sweep_psi', m.msg_id);
